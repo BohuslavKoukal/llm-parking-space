@@ -1,0 +1,12 @@
+type,key,value
+working_hours,monday_friday,07:00-22:00
+working_hours,saturday,08:00-20:00
+working_hours,sunday,09:00-18:00
+price,hourly,3.50
+price,daily,25.00
+price,monthly,150.00
+price,currency,USD
+availability,total_spaces,200
+availability,available_spaces,47
+availability,reserved_spaces,153
+availability,ev_charging_spaces,10

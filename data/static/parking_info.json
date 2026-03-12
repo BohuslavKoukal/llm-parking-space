@@ -1,0 +1,19 @@
+{
+  "parking_name": "CityPark Central",
+  "address": "123 Main Street, City Center",
+  "description": "A modern multi-level parking facility in the heart of the city.",
+  "total_spaces": 200,
+  "levels": 4,
+  "features": ["24/7 CCTV", "Electric vehicle charging", "Disabled access", "Covered parking"],
+  "location": {
+    "latitude": 48.8566,
+    "longitude": 2.3522,
+    "nearest_metro": "Central Station",
+    "walking_distance_minutes": 5
+  },
+  "booking_process": "Users can reserve a parking space by providing their name, surname, car registration number, and desired reservation period. Reservations are subject to administrator confirmation.",
+  "contact": {
+    "phone": "+1-800-PARKING",
+    "email": "info@cityparkcentral.com"
+  }
+}
