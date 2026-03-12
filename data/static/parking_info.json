@@ -1,19 +1,102 @@
-{
-  "parking_name": "CityPark Central",
-  "address": "123 Main Street, City Center",
-  "description": "A modern multi-level parking facility in the heart of the city.",
-  "total_spaces": 200,
-  "levels": 4,
-  "features": ["24/7 CCTV", "Electric vehicle charging", "Disabled access", "Covered parking"],
-  "location": {
-    "latitude": 48.8566,
-    "longitude": 2.3522,
-    "nearest_metro": "Central Station",
-    "walking_distance_minutes": 5
+[
+  {
+    "id": "parking_001",
+    "parking_name": "CityPark Central",
+    "address": "123 Main Street, City Center",
+    "description": "A modern multi-level parking facility in the heart of the city, ideal for shoppers and business visitors.",
+    "total_spaces": 200,
+    "levels": 4,
+    "features": ["24/7 CCTV", "Electric vehicle charging", "Disabled access", "Covered parking"],
+    "location": {
+      "latitude": 48.8566,
+      "longitude": 2.3522,
+      "nearest_metro": "Central Station",
+      "walking_distance_minutes": 5
+    },
+    "booking_process": "Reserve by providing your name, surname, car registration number, and desired reservation period. Subject to administrator confirmation.",
+    "contact": {
+      "phone": "+1-800-PARK-001",
+      "email": "central@cityparkcentral.com"
+    }
   },
-  "booking_process": "Users can reserve a parking space by providing their name, surname, car registration number, and desired reservation period. Reservations are subject to administrator confirmation.",
-  "contact": {
-    "phone": "+1-800-PARKING",
-    "email": "info@cityparkcentral.com"
+  {
+    "id": "parking_002",
+    "parking_name": "AirportPark Express",
+    "address": "1 Airport Boulevard, Terminal 2",
+    "description": "Convenient long-term and short-term parking directly at the airport terminal. Shuttle service included.",
+    "total_spaces": 500,
+    "levels": 2,
+    "features": ["24/7 CCTV", "Shuttle service", "Disabled access", "Outdoor and covered options", "Luggage assistance"],
+    "location": {
+      "latitude": 48.9900,
+      "longitude": 2.5478,
+      "nearest_metro": "Airport Terminal 2",
+      "walking_distance_minutes": 3
+    },
+    "booking_process": "Reserve by providing your name, surname, car registration number, and desired reservation period. Subject to administrator confirmation.",
+    "contact": {
+      "phone": "+1-800-PARK-002",
+      "email": "airport@cityparkcentral.com"
+    }
+  },
+  {
+    "id": "parking_003",
+    "parking_name": "ShoppingMall Park",
+    "address": "45 Retail Avenue, West District",
+    "description": "Spacious underground parking under the city's largest shopping mall. Free for first 2 hours with mall purchase.",
+    "total_spaces": 350,
+    "levels": 3,
+    "features": ["24/7 CCTV", "Free first 2 hours with purchase", "Electric vehicle charging", "Disabled access", "Underground covered"],
+    "location": {
+      "latitude": 48.8712,
+      "longitude": 2.3010,
+      "nearest_metro": "West District Mall",
+      "walking_distance_minutes": 1
+    },
+    "booking_process": "Reserve by providing your name, surname, car registration number, and desired reservation period. Subject to administrator confirmation.",
+    "contact": {
+      "phone": "+1-800-PARK-003",
+      "email": "mall@cityparkcentral.com"
+    }
+  },
+  {
+    "id": "parking_004",
+    "parking_name": "Stadium Park",
+    "address": "78 Sports Complex Road, East Side",
+    "description": "Large open-air parking facility next to the city stadium. Ideal for event-day parking and daily commuters.",
+    "total_spaces": 800,
+    "levels": 1,
+    "features": ["24/7 CCTV", "Event day pricing", "Disabled access", "Open air", "Bus stop on site"],
+    "location": {
+      "latitude": 48.8390,
+      "longitude": 2.3780,
+      "nearest_metro": "Stadium East",
+      "walking_distance_minutes": 7
+    },
+    "booking_process": "Reserve by providing your name, surname, car registration number, and desired reservation period. Subject to administrator confirmation.",
+    "contact": {
+      "phone": "+1-800-PARK-004",
+      "email": "stadium@cityparkcentral.com"
+    }
+  },
+  {
+    "id": "parking_005",
+    "parking_name": "OldTown Garage",
+    "address": "9 Heritage Lane, Old Town Quarter",
+    "description": "Boutique covered garage in the historic Old Town district. Perfect for tourists and restaurant visitors.",
+    "total_spaces": 80,
+    "levels": 2,
+    "features": ["24/7 CCTV", "Covered parking", "Disabled access", "Historic district location", "Bicycle storage"],
+    "location": {
+      "latitude": 48.8530,
+      "longitude": 2.3499,
+      "nearest_metro": "Old Town Square",
+      "walking_distance_minutes": 4
+    },
+    "booking_process": "Reserve by providing your name, surname, car registration number, and desired reservation period. Subject to administrator confirmation.",
+    "contact": {
+      "phone": "+1-800-PARK-005",
+      "email": "oldtown@cityparkcentral.com"
+    }
   }
-}
+]
