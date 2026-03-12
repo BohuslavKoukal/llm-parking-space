@@ -1,46 +1,37 @@
 """SQLAlchemy ORM models for parking chatbot data."""
 
-from datetime import date, datetime
+from datetime import datetime
 
-from sqlalchemy import Date, DateTime, Integer, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Column, Date, DateTime, Integer, String
+from sqlalchemy.orm import declarative_base
 
-
-class Base(DeclarativeBase):
-    """Base declarative model class."""
+Base = declarative_base()
 
 
 class DynamicConfig(Base):
-    """Key-value store for dynamic parking configuration values."""
+    """Dynamic key-value data scoped by parking ID."""
 
     __tablename__ = "dynamic_config"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
-    value: Mapped[str] = mapped_column(String(255), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    parking_id = Column(String, nullable=False, index=True)
+    type = Column(String, nullable=False)
+    key = Column(String, nullable=False)
+    value = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Reservation(Base):
-    """Reservation requests submitted through the chatbot."""
+    """Reservation entity for parking bookings."""
 
     __tablename__ = "reservations"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    surname: Mapped[str] = mapped_column(String(100), nullable=False)
-    car_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    start_date: Mapped[date] = mapped_column(Date, nullable=False)
-    end_date: Mapped[date] = mapped_column(Date, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    parking_id = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    surname = Column(String, nullable=False)
+    car_number = Column(String, nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    status = Column(String, default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)

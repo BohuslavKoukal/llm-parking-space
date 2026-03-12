@@ -2,89 +2,115 @@
 
 import json
 import logging
-from pathlib import Path
+import os
 
-from langchain_core.documents import Document
-from langchain_weaviate.vectorstores import WeaviateVectorStore
+import weaviate
 
 from app.rag.embeddings import get_embeddings
-from app.rag.weaviate_client import get_weaviate_client
+from app.rag.weaviate_client import COLLECTION_NAME, ensure_collection_exists, get_weaviate_client
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
-def _chunk_text(text: str, chunk_size: int = 600, overlap: int = 80) -> list[str]:
-    """Split text into overlapping chunks without external splitter dependencies."""
-    if len(text) <= chunk_size:
-        return [text]
+def chunk_parking_object(parking: dict) -> list[dict]:
+    """
+    Split a single parking JSON object into multiple text chunks by section.
+    Returns list of dicts with keys: content, parking_id, parking_name, section
+    """
+    parking_id = parking["id"]
+    name = parking["parking_name"]
+    chunks = []
 
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        chunks.append(text[start:end])
-        if end == len(text):
-            break
-        start = max(0, end - overlap)
+    features = ", ".join(parking.get("features", []))
+    chunks.append(
+        {
+            "content": f"{name} is located at {parking['address']}. {parking['description']} Features: {features}.",
+            "parking_id": parking_id,
+            "parking_name": name,
+            "section": "general",
+        }
+    )
+
+    loc = parking["location"]
+    chunks.append(
+        {
+            "content": f"{name} location: nearest metro is {loc['nearest_metro']}, "
+            f"{loc['walking_distance_minutes']} minutes walk. "
+            f"Coordinates: {loc['latitude']}, {loc['longitude']}.",
+            "parking_id": parking_id,
+            "parking_name": name,
+            "section": "location",
+        }
+    )
+
+    chunks.append(
+        {
+            "content": f"Booking process for {name}: {parking['booking_process']}",
+            "parking_id": parking_id,
+            "parking_name": name,
+            "section": "booking",
+        }
+    )
+
+    contact = parking["contact"]
+    chunks.append(
+        {
+            "content": f"Contact for {name}: phone {contact['phone']}, email {contact['email']}.",
+            "parking_id": parking_id,
+            "parking_name": name,
+            "section": "contact",
+        }
+    )
+
     return chunks
 
 
-def ingest_static_data(client, embeddings) -> None:
+def ingest_static_data(client, embeddings):
     """Load static parking JSON, chunk into logical sections, and upsert into ParkingInfo."""
-    data_path = Path("data/static/parking_info.json")
-    with data_path.open("r", encoding="utf-8") as file:
-        parking_info = json.load(file)
+    json_path = os.path.join(os.path.dirname(__file__), "../../data/static/parking_info.json")
+    with open(json_path, "r", encoding="utf-8") as file:
+        parkings = json.load(file)
 
-    sections = [
-        ("overview", {
-            "parking_name": parking_info.get("parking_name"),
-            "address": parking_info.get("address"),
-            "description": parking_info.get("description"),
-        }),
-        ("capacity", {
-            "total_spaces": parking_info.get("total_spaces"),
-            "levels": parking_info.get("levels"),
-            "features": parking_info.get("features", []),
-        }),
-        ("location", parking_info.get("location", {})),
-        ("booking_process", {"booking_process": parking_info.get("booking_process")}),
-        ("contact", parking_info.get("contact", {})),
-    ]
+    ensure_collection_exists(client)
+    collection = client.collections.get(COLLECTION_NAME)
 
-    docs = [
-        Document(
-            page_content=json.dumps(section_content, ensure_ascii=False, indent=2),
-            metadata={"section": section_name},
+    for parking in parkings:
+        parking_id = parking["id"]
+
+        collection.data.delete_many(
+            where=weaviate.classes.query.Filter.by_property("parking_id").equal(parking_id)
         )
-        for section_name, section_content in sections
-    ]
 
-    split_docs: list[Document] = []
-    for doc in docs:
-        for chunk in _chunk_text(doc.page_content, chunk_size=600, overlap=80):
-            split_docs.append(Document(page_content=chunk, metadata=doc.metadata))
+        chunks = chunk_parking_object(parking)
+        texts = [chunk["content"] for chunk in chunks]
+        embeddings_list = embeddings.embed_documents(texts)
 
-    vector_store = WeaviateVectorStore(
-        client=client,
-        index_name="ParkingInfo",
-        text_key="text",
-        embedding=embeddings,
-    )
-    vector_store.add_documents(split_docs)
+        for chunk, vector in zip(chunks, embeddings_list):
+            collection.data.insert(
+                properties={
+                    "parking_id": chunk["parking_id"],
+                    "parking_name": chunk["parking_name"],
+                    "content": chunk["content"],
+                    "section": chunk["section"],
+                },
+                vector=vector,
+            )
 
-    LOGGER.info("Ingested %s document chunks into ParkingInfo", len(split_docs))
+        logger.info("Ingested %s chunks for %s", len(chunks), parking_id)
+
+    logger.info("Static data ingestion complete.")
 
 
-def run_ingestion() -> None:
+def run_ingestion():
     """Initialize dependencies and execute static data ingestion."""
-    logging.basicConfig(level=logging.INFO)
     client = get_weaviate_client()
+    embeddings = get_embeddings()
     try:
-        embeddings = get_embeddings()
         ingest_static_data(client, embeddings)
-        LOGGER.info("Ingestion completed successfully")
     finally:
-        try:
-            client.close()
-        except Exception:
-            LOGGER.debug("Weaviate client close skipped")
+        client.close()
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    run_ingestion()
