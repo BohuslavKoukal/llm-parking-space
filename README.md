@@ -126,6 +126,28 @@ parking-chatbot/
 pytest tests/ -v --tb=short
 ```
 
+## Running Evaluation
+Run the standalone evaluation pipeline with:
+```bash
+python scripts/run_evaluation.py
+```
+
+The evaluation measures RAG quality using RAGAS metrics:
+- faithfulness
+- answer_relevancy
+- context_recall
+- context_precision
+
+The generated Markdown report is saved in the reports directory as:
+- reports/eval_report_{timestamp}.md
+
+The latest machine-readable results are also saved to:
+- reports/latest_results.json
+
+Before running evaluation, ensure:
+- Weaviate is running and reachable
+- Parking data has already been ingested into Weaviate
+
 ## Stages Overview
 - **Stage 1:** Core backend setup (RAG wiring, graph flow, and baseline modules).
 - **Stage 2:** Reservation workflow hardening (validation, persistence, and admin confirmations).
