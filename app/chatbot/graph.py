@@ -193,7 +193,7 @@ def reservation_node(state: ChatState) -> ChatState:
             )
         else:
             response = "❌ There was an error saving your reservation. Please try again."
-        return {**state, "reservation_data": collected, "response": response}
+        return {**state, "reservation_data": {} if success else collected, "response": response}
 
     elif any(word in user_confirmation for word in ["no", "cancel", "change", "wrong"]):
         # Reset and start over
