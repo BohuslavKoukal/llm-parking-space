@@ -7,18 +7,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.evaluation.ragas_eval import run_evaluation_with_retry
-from app.evaluation.report import METRIC_THRESHOLDS, save_report
+from app.evaluation.report import METRIC_THRESHOLDS, save_report, _metric_status as metric_status
 from app.rag.weaviate_client import get_weaviate_client, health_check
 
 logger = logging.getLogger(__name__)
-
-
-def metric_status(metric: str, score: float) -> str:
-    """Return pass/warn/fail status for one RAGAS metric."""
-    threshold = METRIC_THRESHOLDS[metric]
-    if metric == "faithfulness":
-        return "passed" if score >= threshold else "failed"
-    return "passed" if score >= threshold else "warning"
 
 
 def main() -> int:
