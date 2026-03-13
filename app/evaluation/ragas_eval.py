@@ -40,8 +40,13 @@ def build_eval_sample(
     question: str,
     ground_truth: str,
     contexts: list[str],
+<<<<<<< HEAD
     all_parking_ids: list[str] | None = None,
     dynamic_summary: list[dict] | None = None,
+=======
+    all_parking_ids: list[str],
+    dynamic_summary: str,
+>>>>>>> de474c7 (Potential fix for pull request finding)
 ) -> dict:
     """Build one evaluation sample by generating answer via RAG chain and measuring latency."""
     if all_parking_ids is None:
@@ -56,9 +61,12 @@ def build_eval_sample(
         rag_chain = build_rag_chain(retriever)
 
         # Match production rag_node behavior by enriching input with dynamic SQL data.
+<<<<<<< HEAD
 
         all_parking_ids = get_all_parking_ids_and_names()
         dynamic_summary = get_all_parkings_summary()
+=======
+>>>>>>> de474c7 (Potential fix for pull request finding)
         enriched_question = (
             f"{question}\n\n"
             f"[Known parking IDs: {', '.join(all_parking_ids)}]\n"
