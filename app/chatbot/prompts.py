@@ -1,4 +1,4 @@
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 SYSTEM_PROMPT = """You are a helpful parking assistant for a network of 5 parking spaces.
 You help users find information about parking locations, prices, working hours,
