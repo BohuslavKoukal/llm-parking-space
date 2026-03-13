@@ -256,7 +256,13 @@ def response_node(state: ChatState) -> ChatState:
             "I'm only able to provide information about our parking spaces "
             "and assist with reservations."
         )
-        return {**state, "response": response}
+        # Append the guarded turn to message history so the UI can display it
+        messages = state.get("messages", [])
+        messages = messages + [
+            HumanMessage(content=state.get("user_input", "")),
+            AIMessage(content=response),
+        ]
+        return {**state, "response": response, "messages": messages}
 
     # Append response to message history
     messages = state.get("messages", [])
