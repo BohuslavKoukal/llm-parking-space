@@ -36,7 +36,13 @@ def load_eval_dataset(path: str) -> list[dict]:
     return data
 
 
-def build_eval_sample(question: str, ground_truth: str, contexts: list[str]) -> dict:
+def build_eval_sample(
+    question: str,
+    ground_truth: str,
+    contexts: list[str],
+    all_parking_ids: list[str],
+    dynamic_summary: str,
+) -> dict:
     """Build one evaluation sample by generating answer via RAG chain and measuring latency."""
     start = time.perf_counter()
     client = get_weaviate_client()
@@ -45,8 +51,6 @@ def build_eval_sample(question: str, ground_truth: str, contexts: list[str]) -> 
         rag_chain = build_rag_chain(retriever)
 
         # Match production rag_node behavior by enriching input with dynamic SQL data.
-        all_parking_ids = get_all_parking_ids_and_names()
-        dynamic_summary = get_all_parkings_summary()
         enriched_question = (
             f"{question}\n\n"
             f"[Known parking IDs: {', '.join(all_parking_ids)}]\n"
@@ -107,6 +111,10 @@ def run_evaluation(dataset_path: str | None = None) -> dict:
     # Ensure dynamic SQL data exists because evaluation depends on enriched runtime context.
     init_db()
 
+    # Fetch invariant dynamic SQL data once per evaluation run.
+    all_parking_ids = get_all_parking_ids_and_names()
+    dynamic_summary = get_all_parkings_summary()
+
     total_start = time.perf_counter()
     samples: list[dict] = []
 
@@ -115,6 +123,8 @@ def run_evaluation(dataset_path: str | None = None) -> dict:
             question=entry["question"],
             ground_truth=entry["ground_truth"],
             contexts=entry["contexts"],
+            all_parking_ids=all_parking_ids,
+            dynamic_summary=dynamic_summary,
         )
         samples.append(sample)
 
