@@ -25,4 +25,5 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           WEAVIATE_URL: http://localhost:8080
           DATABASE_URL: sqlite:///./parking.db
+          PYTHONPATH: .
         run: pytest tests/ -v --tb=short

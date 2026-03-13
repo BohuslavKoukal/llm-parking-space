@@ -79,7 +79,7 @@ def ensure_collection_exists(client: weaviate.WeaviateClient):
         logger.info("Collection '%s' already exists.", COLLECTION_NAME)
 
 
-def get_retriever(client: weaviate.WeaviateClient, k: int = 3):
+def get_retriever(client: weaviate.WeaviateClient, k: int = 20):
     """
     Return a LangChain Weaviate vector store retriever for the ParkingInfo collection.
     k: number of documents to retrieve per query.

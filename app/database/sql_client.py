@@ -3,6 +3,7 @@
 import csv
 import logging
 import os
+from typing import cast
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -58,7 +59,7 @@ def get_dynamic_value(parking_id: str, key: str) -> str | None:
     session = SessionLocal()
     try:
         row = session.query(DynamicConfig).filter_by(parking_id=parking_id, key=key).first()
-        return row.value if row else None
+        return cast(str, row.value) if row else None
     finally:
         session.close()
 
@@ -89,5 +90,17 @@ def get_all_parkings_summary() -> list[dict]:
         for row in rows:
             summary.setdefault(row.parking_id, {}).setdefault(row.type, {})[row.key] = row.value
         return [{"parking_id": pid, **data} for pid, data in summary.items()]
+    finally:
+        session.close()
+
+def get_all_parking_ids_and_names() -> list[str]:
+    """
+    Return a list of all distinct parking_id values from DynamicConfig.
+    Used to dynamically enumerate all known parking spaces.
+    """
+    session = SessionLocal()
+    try:
+        rows = session.query(DynamicConfig.parking_id).distinct().all()
+        return [row.parking_id for row in rows]
     finally:
         session.close()
