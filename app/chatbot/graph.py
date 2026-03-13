@@ -11,6 +11,7 @@ from app.chatbot.chains import (
 )
 from app.rag.weaviate_client import get_weaviate_client, get_retriever
 from app.database.sql_client import get_all_parkings_summary, get_all_parking_ids_and_names
+from app.guardrails.filters import is_sensitive, get_block_reason
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +49,18 @@ def guardrail_node(state: ChatState) -> ChatState:
         logger.info("Guardrail skipped: reservation in progress")
         return {**state, "guardrail_triggered": False}
 
+    # Layer 1: Presidio + regex (local, fast, no API call)
+    if is_sensitive(state["user_input"]):
+        reason = get_block_reason(state["user_input"])
+        logger.warning("Guardrail triggered by Presidio layer (%s) for input: %s", reason, state["user_input"][:50])
+        return {**state, "guardrail_triggered": True}
+
+    # Layer 2: LLM guardrail (only if Presidio layer passes)
     chain = build_guardrail_chain()
     result = chain.invoke({"user_input": state["user_input"]}).strip().lower()
     triggered = result == "blocked"
     if triggered:
-        logger.warning(f"Guardrail triggered for input: {state['user_input'][:50]}")
+        logger.warning("Guardrail triggered by LLM layer for input: %s", state["user_input"][:50])
     return {**state, "guardrail_triggered": triggered}
 
 def intent_node(state: ChatState) -> ChatState:
