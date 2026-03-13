@@ -40,10 +40,15 @@ def build_eval_sample(
     question: str,
     ground_truth: str,
     contexts: list[str],
-    all_parking_ids: list[str],
-    dynamic_summary: str,
+    all_parking_ids: list[str] | None = None,
+    dynamic_summary: list[dict] | None = None,
 ) -> dict:
     """Build one evaluation sample by generating answer via RAG chain and measuring latency."""
+    if all_parking_ids is None:
+        all_parking_ids = get_all_parking_ids_and_names()
+    if dynamic_summary is None:
+        dynamic_summary = get_all_parkings_summary()
+
     start = time.perf_counter()
     client = get_weaviate_client()
     try:
