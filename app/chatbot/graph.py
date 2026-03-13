@@ -175,7 +175,12 @@ def reservation_node(state: ChatState) -> ChatState:
 
     # Phase 2: all fields collected, awaiting confirmation
     user_confirmation = state["user_input"].strip().lower()
-    if any(word in user_confirmation for word in ["yes", "confirm", "correct", "ok", "sure"]):
+    # Tokenize to avoid substring matches like "yesterday" (containing "yes")
+    confirmation_tokens = set(re.findall(r"\b\w+\b", user_confirmation))
+    positive_confirmations = {"yes", "confirm", "correct", "ok", "sure"}
+    negative_confirmations = {"no", "cancel", "change", "wrong"}
+
+    if confirmation_tokens & positive_confirmations:
         # Save to database
         success = save_reservation(collected)
         if success:
@@ -195,7 +200,7 @@ def reservation_node(state: ChatState) -> ChatState:
             response = "❌ There was an error saving your reservation. Please try again."
         return {**state, "reservation_data": {} if success else collected, "response": response}
 
-    elif any(word in user_confirmation for word in ["no", "cancel", "change", "wrong"]):
+    elif confirmation_tokens & negative_confirmations:
         # Reset and start over
         response = "No problem! Let's start over. Which parking space would you like to reserve?"
         return {**state, "reservation_data": {}, "response": response}
