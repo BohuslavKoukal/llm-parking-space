@@ -201,6 +201,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Generated evaluation reports and local databases
+reports/
+*.db
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

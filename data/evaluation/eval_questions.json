@@ -1,0 +1,82 @@
+[
+  {
+    "question": "What is the hourly and daily price at CityPark Central (parking_001)?",
+    "ground_truth": "CityPark Central (parking_001) costs 3.50 USD per hour and 25.00 USD per day.",
+    "contexts": [
+      "parking_001 CityPark Central pricing: hourly 3.50 USD, daily 25.00 USD, monthly 150.00 USD.",
+      "CityPark Central is optimized for short city visits and central access."
+    ]
+  },
+  {
+    "question": "What monthly pass price does CityPark Central offer?",
+    "ground_truth": "CityPark Central (parking_001) offers a monthly pass for 150.00 USD.",
+    "contexts": [
+      "parking_001 CityPark Central monthly price is 150.00 USD.",
+      "CityPark Central supports recurring monthly subscriptions."
+    ]
+  },
+  {
+    "question": "Is AirportPark Express (parking_002) open on Sundays and what is its daily price?",
+    "ground_truth": "AirportPark Express (parking_002) is open on Sundays (00:00-23:59) and the daily price is 35.00 USD.",
+    "contexts": [
+      "parking_002 AirportPark Express opening hours: Mon-Sun 00:00-23:59.",
+      "AirportPark Express pricing: hourly 5.00 USD, daily 35.00 USD, monthly 200.00 USD."
+    ]
+  },
+  {
+    "question": "How far is AirportPark Express from the nearest metro station?",
+    "ground_truth": "AirportPark Express is about 12 minutes from the nearest metro station.",
+    "contexts": [
+      "parking_002 AirportPark Express location: nearest metro Airport Metro, walking distance 12 minutes.",
+      "AirportPark Express has shuttle-friendly access for terminals."
+    ]
+  },
+  {
+    "question": "What are the hourly and monthly prices for ShoppingMall Park (parking_003)?",
+    "ground_truth": "ShoppingMall Park (parking_003) costs 2.00 USD per hour and 120.00 USD per month.",
+    "contexts": [
+      "parking_003 ShoppingMall Park pricing: hourly 2.00 USD, daily 18.00 USD, monthly 120.00 USD.",
+      "ShoppingMall Park is designed for retail and family visits."
+    ]
+  },
+  {
+    "question": "What features are available at ShoppingMall Park?",
+    "ground_truth": "ShoppingMall Park provides EV charging, CCTV, disabled parking, and 24/7 entry barriers.",
+    "contexts": [
+      "parking_003 ShoppingMall Park features: EV charging, CCTV, disabled parking, 24/7 barrier access.",
+      "ShoppingMall Park supports family-friendly and shopping peak traffic."
+    ]
+  },
+  {
+    "question": "What are Stadium Park (parking_004) Sunday hours and hourly price?",
+    "ground_truth": "Stadium Park (parking_004) is open on Sunday 08:00-22:00 and costs 2.50 USD per hour.",
+    "contexts": [
+      "parking_004 Stadium Park working hours: Sunday 08:00-22:00.",
+      "Stadium Park pricing: hourly 2.50 USD, daily 15.00 USD, monthly 90.00 USD."
+    ]
+  },
+  {
+    "question": "How can I book a space at Stadium Park?",
+    "ground_truth": "For Stadium Park, choose parking_004, provide personal and car details, select start/end dates, then confirm.",
+    "contexts": [
+      "parking_004 booking process: select parking_004, provide name, surname, car plate, start and end dates, confirm reservation.",
+      "Reservations are saved with pending status until administrator confirmation."
+    ]
+  },
+  {
+    "question": "What are the daily and monthly prices for OldTown Garage (parking_005)?",
+    "ground_truth": "OldTown Garage (parking_005) costs 28.00 USD per day and 170.00 USD per month.",
+    "contexts": [
+      "parking_005 OldTown Garage pricing: hourly 4.00 USD, daily 28.00 USD, monthly 170.00 USD.",
+      "OldTown Garage serves historical center visitors and residents."
+    ]
+  },
+  {
+    "question": "Does OldTown Garage have covered parking and how close is the metro?",
+    "ground_truth": "OldTown Garage has covered parking and is around 6 minutes from the nearest metro.",
+    "contexts": [
+      "parking_005 OldTown Garage amenities: covered parking, CCTV, secure gate access.",
+      "OldTown Garage location: nearest metro OldTown Station, 6-minute walk."
+    ]
+  }
+]
