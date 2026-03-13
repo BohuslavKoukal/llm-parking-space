@@ -78,12 +78,6 @@ for message in st.session_state.messages:
         with st.chat_message("assistant"):
             st.markdown(message.content)
 
-# Initialize processing lock
-if "is_processing" not in st.session_state:
-    st.session_state.is_processing = False
-if "last_processed_input" not in st.session_state:
-    st.session_state.last_processed_input = None
-
 # Handle new input
 user_input = st.chat_input(
     "Ask about parking or make a reservation...",
