@@ -62,6 +62,27 @@ Parking Chatbot is a production-ready Python scaffold for a Retrieval-Augmented 
    streamlit run app/main.py
    ```
 
+## Important: Python Path Setup
+This project requires the repository root to be on the Python path.
+This is handled automatically if you copy .env.example to .env:
+```bash
+cp .env.example .env
+```
+
+For manual terminal launches on Windows PowerShell:
+```powershell
+$env:PYTHONPATH = "."
+streamlit run app/main.py
+```
+
+For manual terminal launches on Mac/Linux:
+```bash
+export PYTHONPATH=.
+streamlit run app/main.py
+```
+
+When using Docker Compose, PYTHONPATH is set automatically.
+
 ### Docker
 1. Create `.env` from `.env.example`.
 2. Start services:

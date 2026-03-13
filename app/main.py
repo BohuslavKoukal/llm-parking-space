@@ -1,134 +1,127 @@
-"""Streamlit entry point for the Parking Chatbot application."""
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import logging
-import os
-from typing import cast
-
-import streamlit as st
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, HumanMessage
-from sqlalchemy import text
-
+import streamlit as st
 from app.chatbot.graph import ChatState, chatbot_graph
-from app.database.sql_client import get_engine, init_db
+from app.database.sql_client import init_db
 from app.rag.weaviate_client import get_weaviate_client, health_check
+from langchain_core.messages import HumanMessage, AIMessage
 
 load_dotenv()
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = logging.getLogger(__name__)
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+
+# -- Page config --------------------------------------------------------------
+st.set_page_config(
+    page_title="Parking Assistant",
+    page_icon="🅿️",
+    layout="centered"
 )
-LOGGER = logging.getLogger(__name__)
 
 
+# -- Initialize DB on startup -------------------------------------------------
 @st.cache_resource
-def _db_status() -> bool:
+def initialize_services():
+    """Initialize database and check Weaviate connection once on startup."""
+    init_db()
+    client = get_weaviate_client()
+    weaviate_ok = False
     try:
-        init_db()
-        engine = get_engine()
-        with engine.connect() as connection:
-            connection.execute(text("SELECT 1"))
-        return True
-    except Exception:
-        LOGGER.exception("Database health check failed")
-        return False
-
-
-@st.cache_resource
-def _weaviate_status() -> bool:
-    client = None
-    try:
-        client = get_weaviate_client()
-        return health_check(client)
-    except Exception:
-        LOGGER.exception("Weaviate health check failed")
-        return False
+        weaviate_ok = health_check(client)
     finally:
-        if client is not None:
-            try:
-                client.close()
-            except Exception:
-                LOGGER.debug("Unable to close Weaviate client cleanly")
-
-
-def _render_sidebar() -> None:
-    st.sidebar.header("Parking Chatbot")
-    st.sidebar.subheader("CityPark Central")
-
-    weaviate_connected = _weaviate_status()
-    db_connected = _db_status()
-
-    st.sidebar.write(f"Weaviate connected: {'yes' if weaviate_connected else 'no'}")
-    st.sidebar.write(f"DB connected: {'yes' if db_connected else 'no'}")
-
-
-def _ensure_session_state() -> None:
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-
-def _render_history() -> None:
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-
-def _invoke_chatbot(user_input: str) -> str:
-    graph_messages = []
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            graph_messages.append(HumanMessage(content=msg["content"]))
-        else:
-            graph_messages.append(AIMessage(content=msg["content"]))
-
-    state = cast(
-        ChatState,
-        {
-        "messages": graph_messages,
-        "user_input": user_input,
-        "intent": "unknown",
-        "reservation_data": {},
-        "guardrail_triggered": False,
-        "response": "",
-        },
-    )
-    result = chatbot_graph.invoke(state)
-    return result.get("response", "I am here to help with parking information and reservations.")
-
-
-def main() -> None:
-    st.set_page_config(page_title="Parking Chatbot", page_icon="🅿️", layout="wide")
-    st.title("Parking Chatbot")
-    st.caption("RAG-powered assistant for parking information and reservations")
-
-    _ensure_session_state()
-    _render_sidebar()
-    _render_history()
-
-    user_input = st.chat_input("Ask about parking info or make a reservation")
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-
-        with st.chat_message("user"):
-            st.markdown(user_input)
-
         try:
-            assistant_response = _invoke_chatbot(user_input)
-        except Exception:
-            LOGGER.exception("Chatbot invocation failed")
-            assistant_response = (
-                "Sorry, I ran into a temporary issue while processing your request. "
-                "Please try again in a moment."
-            )
+            client.close()
+        except Exception as exc:
+            logger.warning("Failed to close Weaviate client: %s", exc)
+    return weaviate_ok
 
-        st.session_state.messages.append(
-            {"role": "assistant", "content": assistant_response}
-        )
+
+weaviate_ok = initialize_services()
+
+
+# -- Sidebar ------------------------------------------------------------------
+with st.sidebar:
+    st.title("🅿️ Parking Assistant")
+    st.markdown("---")
+    st.markdown("**System Status**")
+    st.markdown(f"Weaviate: {'🟢 Connected' if weaviate_ok else '🔴 Disconnected'}")
+    st.markdown("Database: 🟢 Connected")
+    st.markdown("---")
+    st.markdown("**Available Parkings**")
+    st.markdown("- 🏙️ CityPark Central\n- ✈️ AirportPark Express\n- 🛍️ ShoppingMall Park\n- 🏟️ Stadium Park\n- 🏛️ OldTown Garage")
+    st.markdown("---")
+    if st.button("Clear conversation"):
+        st.session_state.messages = []
+        st.session_state.reservation_data = {}
+        st.rerun()
+
+
+# ── Session state ─────────────────────────────────────────────────────────────
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "reservation_data" not in st.session_state:
+    st.session_state.reservation_data = {}
+if "is_processing" not in st.session_state:
+    st.session_state.is_processing = False
+if "last_processed_input" not in st.session_state:
+    st.session_state.last_processed_input = None
+
+
+# -- Chat UI ------------------------------------------------------------------
+st.title("🅿️ Parking Assistant")
+st.markdown("Ask me about parking spaces, prices, availability, or make a reservation!")
+
+# Display message history
+for message in st.session_state.messages:
+    if isinstance(message, HumanMessage):
+        with st.chat_message("user"):
+            st.markdown(message.content)
+    elif isinstance(message, AIMessage):
         with st.chat_message("assistant"):
-            st.markdown(assistant_response)
+            st.markdown(message.content)
 
+# Handle new input
+user_input = st.chat_input(
+    "Ask about parking or make a reservation...",
+    disabled=st.session_state.is_processing
+)
 
-if __name__ == "__main__":
-    main()
+if user_input and not st.session_state.is_processing:
+    # Set lock immediately before anything else
+    st.session_state.is_processing = True
+    st.session_state.last_processed_input = user_input
+
+    with st.chat_message("user"):
+        st.markdown(user_input)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            try:
+                initial_state: ChatState = {
+                    "messages": st.session_state.messages,
+                    "user_input": user_input,
+                    "intent": "",
+                    "reservation_data": st.session_state.reservation_data,
+                    "guardrail_triggered": False,
+                    "response": ""
+                }
+                result = chatbot_graph.invoke(initial_state)
+                response = result["response"]
+
+                # Save state before any rerun can happen
+                st.session_state.reservation_data = result.get("reservation_data", {})
+                st.session_state.messages = result.get("messages", [])
+
+            except Exception as e:
+                logger.error(f"Graph invocation error: {e}")
+                response = "I encountered an error. Please try again."
+
+            finally:
+                # Always release lock
+                st.session_state.is_processing = False
+
+            st.markdown(response)
