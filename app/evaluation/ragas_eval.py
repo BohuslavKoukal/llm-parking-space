@@ -56,6 +56,9 @@ def build_eval_sample(
         rag_chain = build_rag_chain(retriever)
 
         # Match production rag_node behavior by enriching input with dynamic SQL data.
+
+        all_parking_ids = get_all_parking_ids_and_names()
+        dynamic_summary = get_all_parkings_summary()
         enriched_question = (
             f"{question}\n\n"
             f"[Known parking IDs: {', '.join(all_parking_ids)}]\n"
