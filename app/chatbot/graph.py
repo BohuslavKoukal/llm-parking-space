@@ -1,5 +1,5 @@
 import logging
-from typing import TypedDict, Optional
+from typing import TypedDict
 import re
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
@@ -10,7 +10,7 @@ from app.chatbot.chains import (
     build_guardrail_chain
 )
 from app.rag.weaviate_client import get_weaviate_client, get_retriever
-from app.database.sql_client import init_db, get_all_parkings_summary, get_all_parking_ids_and_names
+from app.database.sql_client import get_all_parkings_summary, get_all_parking_ids_and_names
 
 logger = logging.getLogger(__name__)
 
