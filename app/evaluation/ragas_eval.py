@@ -87,7 +87,13 @@ def _extract_metric_scores(eval_result: Any) -> dict[str, float]:
         if value is None:
             try:
                 value = eval_result[name]
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Metric '%s' is missing or unreadable in evaluation result; "
+                    "defaulting score to 0.0. Error: %s",
+                    name,
+                    exc,
+                )
                 value = 0.0
 
         if isinstance(value, list):
@@ -96,6 +102,11 @@ def _extract_metric_scores(eval_result: Any) -> dict[str, float]:
         elif isinstance(value, (int, float)):
             score = float(value)
         else:
+            logger.warning(
+                "Metric '%s' has unsupported type %s; defaulting score to 0.0.",
+                name,
+                type(value).__name__,
+            )
             score = 0.0
 
         scores[name] = round(score, 4)
