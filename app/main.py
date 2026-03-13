@@ -29,8 +29,14 @@ def initialize_services():
     """Initialize database and check Weaviate connection once on startup."""
     init_db()
     client = get_weaviate_client()
-    weaviate_ok = health_check(client)
-    client.close()
+    weaviate_ok = False
+    try:
+        weaviate_ok = health_check(client)
+    finally:
+        try:
+            client.close()
+        except Exception as exc:
+            logger.warning("Failed to close Weaviate client: %s", exc)
     return weaviate_ok
 
 
