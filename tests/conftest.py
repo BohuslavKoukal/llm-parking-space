@@ -67,7 +67,7 @@ def thread_id() -> str:
 @pytest.fixture
 def thread_config(thread_id) -> dict:
     """A LangGraph thread config for use in tests."""
-    return {"configurable": {"thread_id": thread_id}}
+    return get_thread_config(thread_id)
 
 
 @pytest.fixture

@@ -62,6 +62,11 @@ Parking Chatbot is a production-ready Python scaffold for a Retrieval-Augmented 
    streamlit run app/main.py
    ```
 
+> **Upgrading from Stage 1?** If you have an existing `parking.db` from a
+> pre-Stage-2 version it may be missing the `thread_id` column on the
+> `reservations` table.  The application auto-migrates the schema on first
+> run — no manual action is required.
+
 ## Important: Python Path Setup
 This project requires the repository root to be on the Python path.
 This is handled automatically if you copy .env.example to .env:

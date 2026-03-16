@@ -1,7 +1,6 @@
 import logging
 import os
 import sqlite3
-from threading import Lock
 from typing import TypedDict
 import re
 from langgraph.graph import StateGraph, START, END
@@ -229,7 +228,20 @@ def reservation_node(state: ChatState) -> ChatState:
 
 
 def save_reservation(data: dict) -> bool:
-    """Save confirmed reservation to SQL database with status pending."""
+    """
+    Save confirmed reservation to SQL database with status pending.
+
+    .. deprecated::
+        Use :func:`app.database.sql_client.save_reservation_with_thread` instead.
+        This function does not store the LangGraph thread_id and is kept only for
+        backwards-compatible test patching.
+    """
+    import warnings
+    warnings.warn(
+        "save_reservation() is deprecated; use save_reservation_with_thread() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from app.database.sql_client import SessionLocal
     from app.database.models import Reservation
     from datetime import date
@@ -422,12 +434,17 @@ def build_graph(conn_string: str | None = None):
          '- unknown_node -> response_node -> END
 
     Args:
-        conn_string: Optional SQLite connection string. Defaults to the
-            CHECKPOINT_DB_URL env var (or "checkpoints.db"). Pass ":memory:"
-            in tests to get a fresh, isolated in-memory checkpointer.
+        conn_string: Optional filesystem path to the SQLite checkpointer database.
+            Defaults to the CHECKPOINT_DB_PATH env var (or "checkpoints.db").
+            Pass ":memory:" in tests to get a fresh, isolated in-memory checkpointer.
+            If a "sqlite:///" prefix is present it is stripped automatically.
     """
-    checkpoint_db_url = conn_string if conn_string is not None else os.getenv("CHECKPOINT_DB_URL", "checkpoints.db")
-    conn = sqlite3.connect(checkpoint_db_url, check_same_thread=False)
+    raw = conn_string if conn_string is not None else os.getenv("CHECKPOINT_DB_PATH", "checkpoints.db")
+    # Normalise: strip sqlite:/// prefix if the caller passed a full URL instead of a bare path
+    if raw.startswith("sqlite:///"):
+        raw = raw[len("sqlite:///"):]
+    checkpoint_db_path = raw
+    conn = sqlite3.connect(checkpoint_db_path, check_same_thread=False)
     saver = SqliteSaver(conn)
 
     graph = StateGraph(ChatState)

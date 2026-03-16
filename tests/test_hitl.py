@@ -1,5 +1,6 @@
 """Tests for HITL (Human-in-the-Loop) nodes, routing, and interrupt behaviour."""
 
+import contextlib
 import uuid
 from copy import deepcopy
 from datetime import date
@@ -31,8 +32,15 @@ def _make_config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
 
 
+@contextlib.contextmanager
 def _all_external_patches():
-    """Suppress all external I/O for full-graph invocations."""
+    """
+    Context manager that suppresses all external I/O for full-graph invocations.
+
+    Usage:
+        with _all_external_patches():
+            result = graph.invoke(state, config=config)
+    """
     guardrail_chain = MagicMock()
     guardrail_chain.invoke.return_value = "allowed"
 
@@ -42,16 +50,16 @@ def _all_external_patches():
     mock_client = MagicMock()
     mock_retriever = MagicMock()
 
-    return [
-        patch("app.chatbot.graph.is_sensitive", return_value=False),
-        patch("app.chatbot.graph.build_guardrail_chain", return_value=guardrail_chain),
-        patch("app.chatbot.graph.build_intent_chain", return_value=intent_chain),
-        patch("app.chatbot.graph.build_rag_chain", return_value=MagicMock()),
-        patch("app.chatbot.graph.get_weaviate_client", return_value=mock_client),
-        patch("app.chatbot.graph.get_retriever", return_value=mock_retriever),
-        patch("app.chatbot.graph.get_all_parkings_summary", return_value=[]),
-        patch("app.chatbot.graph.get_all_parking_ids_and_names", return_value=["parking_001"]),
-    ]
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch("app.chatbot.graph.is_sensitive", return_value=False))
+        stack.enter_context(patch("app.chatbot.graph.build_guardrail_chain", return_value=guardrail_chain))
+        stack.enter_context(patch("app.chatbot.graph.build_intent_chain", return_value=intent_chain))
+        stack.enter_context(patch("app.chatbot.graph.build_rag_chain", return_value=MagicMock()))
+        stack.enter_context(patch("app.chatbot.graph.get_weaviate_client", return_value=mock_client))
+        stack.enter_context(patch("app.chatbot.graph.get_retriever", return_value=mock_retriever))
+        stack.enter_context(patch("app.chatbot.graph.get_all_parkings_summary", return_value=[]))
+        stack.enter_context(patch("app.chatbot.graph.get_all_parking_ids_and_names", return_value=["parking_001"]))
+        yield
 
 
 def _confirmed_state() -> ChatState:
@@ -306,17 +314,10 @@ def test_graph_state_is_interrupted_after_submit(fresh_graph):
     config = {"configurable": {"thread_id": tid}}
     state = _full_graph_input_state()
 
-    patches = _all_external_patches()
-    for p in patches:
-        p.start()
-
-    try:
+    with _all_external_patches():
         with patch("app.database.sql_client.save_reservation_with_thread", return_value=True), \
              patch("app.database.sql_client.get_reservation_by_thread_id", return_value=None):
             result = fresh_graph.invoke(state, config=config)
-    finally:
-        for p in patches:
-            p.stop()
 
     assert "__interrupt__" in result, (
         "Graph should have been interrupted at submit_to_admin_node after reservation confirmation"

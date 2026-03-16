@@ -1,5 +1,6 @@
 """Tests for LangGraph checkpointer integration and related SQL helpers."""
 
+import contextlib
 import uuid
 import pytest
 from unittest.mock import patch, MagicMock
@@ -14,11 +15,15 @@ from langchain_core.messages import HumanMessage
 # so tests run without real OpenAI / Weaviate connections.
 # ---------------------------------------------------------------------------
 
+@contextlib.contextmanager
 def _all_external_patches():
-    """Return a list of patch objects that suppress all external I/O in the graph."""
-    mock_chain = MagicMock()
-    mock_chain.invoke.return_value = "Test info response"
+    """
+    Context manager that suppresses all external I/O in the graph.
 
+    Usage:
+        with _all_external_patches():
+            result = graph.invoke(state, config=config)
+    """
     guardrail_chain = MagicMock()
     guardrail_chain.invoke.return_value = "allowed"
 
@@ -31,16 +36,16 @@ def _all_external_patches():
     mock_client = MagicMock()
     mock_retriever = MagicMock()
 
-    return [
-        patch("app.chatbot.graph.is_sensitive", return_value=False),
-        patch("app.chatbot.graph.build_guardrail_chain", return_value=guardrail_chain),
-        patch("app.chatbot.graph.build_intent_chain", return_value=intent_chain),
-        patch("app.chatbot.graph.build_rag_chain", return_value=rag_chain),
-        patch("app.chatbot.graph.get_weaviate_client", return_value=mock_client),
-        patch("app.chatbot.graph.get_retriever", return_value=mock_retriever),
-        patch("app.chatbot.graph.get_all_parkings_summary", return_value=[]),
-        patch("app.chatbot.graph.get_all_parking_ids_and_names", return_value=["parking_001"]),
-    ]
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch("app.chatbot.graph.is_sensitive", return_value=False))
+        stack.enter_context(patch("app.chatbot.graph.build_guardrail_chain", return_value=guardrail_chain))
+        stack.enter_context(patch("app.chatbot.graph.build_intent_chain", return_value=intent_chain))
+        stack.enter_context(patch("app.chatbot.graph.build_rag_chain", return_value=rag_chain))
+        stack.enter_context(patch("app.chatbot.graph.get_weaviate_client", return_value=mock_client))
+        stack.enter_context(patch("app.chatbot.graph.get_retriever", return_value=mock_retriever))
+        stack.enter_context(patch("app.chatbot.graph.get_all_parkings_summary", return_value=[]))
+        stack.enter_context(patch("app.chatbot.graph.get_all_parking_ids_and_names", return_value=["parking_001"]))
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -101,11 +106,7 @@ def test_graph_persists_state_across_invocations(fresh_graph):
         "response": "",
     }
 
-    patches = _all_external_patches()
-    for p in patches:
-        p.start()
-
-    try:
+    with _all_external_patches():
         result_1 = fresh_graph.invoke(state_1, config=config)
         messages_after_turn_1 = result_1.get("messages", [])
         assert len(messages_after_turn_1) == 2, "Expected one HumanMessage + one AIMessage after turn 1"
@@ -124,9 +125,6 @@ def test_graph_persists_state_across_invocations(fresh_graph):
         assert len(messages_after_turn_2) == 4, "Expected four messages after turn 2 (two per turn)"
         # The first turn's human message should still be present
         assert messages_after_turn_1[0] in messages_after_turn_2
-    finally:
-        for p in patches:
-            p.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -157,11 +155,7 @@ def test_different_thread_ids_have_independent_state(fresh_graph):
         "response": "",
     }
 
-    patches = _all_external_patches()
-    for p in patches:
-        p.start()
-
-    try:
+    with _all_external_patches():
         result_a = fresh_graph.invoke(state_a, config=config_a)
         result_b = fresh_graph.invoke(state_b, config=config_b)
 
@@ -183,9 +177,6 @@ def test_different_thread_ids_have_independent_state(fresh_graph):
         a_human_contents = [m.content for m in msgs_a if isinstance(m, HumanMessage)]
         b_human_contents = [m.content for m in msgs_b if isinstance(m, HumanMessage)]
         assert a_human_contents != b_human_contents
-    finally:
-        for p in patches:
-            p.stop()
 
 
 # ---------------------------------------------------------------------------

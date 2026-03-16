@@ -18,7 +18,7 @@ class DynamicConfig(Base):
     type = Column(String, nullable=False)
     key = Column(String, nullable=False)
     value = Column(String, nullable=False)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Reservation(Base):
@@ -35,4 +35,4 @@ class Reservation(Base):
     end_date = Column(Date, nullable=False)
     status = Column(String, default="pending")
     thread_id = Column(String, nullable=True, index=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
