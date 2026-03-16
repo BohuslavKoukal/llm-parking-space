@@ -5,7 +5,7 @@ from typing import TypedDict
 import re
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.types import interrupt, Command
+from langgraph.types import interrupt
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from app.chatbot.chains import (
@@ -310,9 +310,18 @@ def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatSta
     from app.database.sql_client import update_reservation_status
 
     thread_id = config["configurable"]["thread_id"]
-    update_reservation_status(thread_id, "confirmed")
-    logger.info("Reservation confirmed for thread_id=%s", thread_id)
+    result = update_reservation_status(thread_id, "confirmed")
 
+    if not result:
+        logger.error("Failed to confirm reservation for thread_id=%s", thread_id)
+        response = (
+            "Your reservation was approved but we encountered an error "
+            "confirming it in our system. Please contact the administrator "
+            f"with your booking reference: {thread_id[:8]}"
+        )
+        return {**state, "response": response}
+
+    logger.info("Reservation confirmed for thread_id=%s", thread_id)
     response = (
         "Your reservation has been **confirmed** by the administrator!\n\n"
         "We look forward to seeing you. Enjoy your parking experience."
@@ -325,13 +334,20 @@ def notify_rejection_node(state: ChatState, config: RunnableConfig) -> ChatState
     from app.database.sql_client import update_reservation_status
 
     thread_id = config["configurable"]["thread_id"]
-    update_reservation_status(thread_id, "rejected")
-    logger.info("Reservation rejected for thread_id=%s", thread_id)
+    result = update_reservation_status(thread_id, "rejected")
 
-    response = (
-        "We're sorry, your reservation request has been rejected by the administrator. "
-        "Please try again or contact us for more information."
-    )
+    if not result:
+        logger.error("Failed to reject reservation for thread_id=%s", thread_id)
+        response = (
+            "We encountered an issue processing your rejection. "
+            "Please contact the administrator directly."
+        )
+    else:
+        logger.info("Reservation rejected for thread_id=%s", thread_id)
+        response = (
+            "We're sorry, your reservation request has been rejected by the administrator. "
+            "Please try again or contact us for more information."
+        )
     return {**state, "reservation_data": {}, "response": response}
 
 
