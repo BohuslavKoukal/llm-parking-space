@@ -3,9 +3,10 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import logging
+import uuid
 from dotenv import load_dotenv
 import streamlit as st
-from app.chatbot.graph import ChatState, chatbot_graph
+from app.chatbot.graph import ChatState, chatbot_graph, get_thread_config
 from app.database.sql_client import init_db
 from app.rag.weaviate_client import get_weaviate_client, health_check
 from langchain_core.messages import HumanMessage, AIMessage
@@ -50,6 +51,8 @@ with st.sidebar:
     st.markdown("**System Status**")
     st.markdown(f"Weaviate: {'🟢 Connected' if weaviate_ok else '🔴 Disconnected'}")
     st.markdown("Database: 🟢 Connected")
+    if "thread_id" in st.session_state:
+        st.markdown(f"Thread: `{st.session_state.thread_id[:8]}...`")
     st.markdown("---")
     st.markdown("**Available Parkings**")
     st.markdown("- 🏙️ CityPark Central\n- ✈️ AirportPark Express\n- 🛍️ ShoppingMall Park\n- 🏟️ Stadium Park\n- 🏛️ OldTown Garage")
@@ -69,6 +72,8 @@ if "is_processing" not in st.session_state:
     st.session_state.is_processing = False
 if "last_processed_input" not in st.session_state:
     st.session_state.last_processed_input = None
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
 
 
 # -- Chat UI ------------------------------------------------------------------
@@ -109,7 +114,8 @@ if user_input and not st.session_state.is_processing:
                     "guardrail_triggered": False,
                     "response": ""
                 }
-                result = chatbot_graph.invoke(initial_state)
+                thread_config = get_thread_config(st.session_state.thread_id)
+                result = chatbot_graph.invoke(initial_state, config=thread_config)
                 response = result["response"]
 
                 # Save state before any rerun can happen

@@ -1,7 +1,10 @@
 import logging
 from typing import TypedDict
 import re
+import os
+import sqlite3
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from app.chatbot.chains import (
     build_rag_chain,
@@ -307,6 +310,16 @@ def route_after_intent(state: ChatState) -> str:
         return "unknown_node"
 
 
+def get_thread_config(thread_id: str) -> dict:
+    """
+    Build a LangGraph config dict for the given thread_id.
+    This dict must be passed as the `config` argument to every
+    chatbot_graph.invoke() call so that the checkpointer can
+    persist and resume the correct conversation state.
+    """
+    return {"configurable": {"thread_id": thread_id}}
+
+
 # -- Graph assembly -----------------------------------------------------------
 
 def build_graph():
@@ -343,8 +356,14 @@ def build_graph():
     graph.add_edge("unknown_node", "response_node")
     graph.add_edge("response_node", END)
 
-    return graph.compile()
+    conn_string = os.getenv("CHECKPOINT_DB_URL", "checkpoints.db")
+    # The connection is intentionally kept open for the lifetime of the process.
+    # It is shared with the SqliteSaver checkpointer which needs it for every
+    # graph invocation.  The OS will release the file handle on process exit.
+    conn = sqlite3.connect(conn_string, check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
+    return graph.compile(checkpointer=checkpointer), checkpointer
 
 
-# Compiled graph instance - imported by main.py
-chatbot_graph = build_graph()
+# Compiled graph instance and checkpointer - imported by main.py and other modules
+chatbot_graph, checkpointer = build_graph()

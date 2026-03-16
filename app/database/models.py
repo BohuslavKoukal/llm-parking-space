@@ -35,3 +35,4 @@ class Reservation(Base):
     end_date = Column(Date, nullable=False)
     status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
+    thread_id = Column(String, nullable=True, index=True)

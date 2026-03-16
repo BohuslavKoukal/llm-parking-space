@@ -49,3 +49,15 @@ def all_fields_collected_state() -> ChatState:
         "guardrail_triggered": False,
         "response": "",
     }
+
+
+@pytest.fixture
+def thread_id() -> str:
+    """A fixed thread_id for use in tests."""
+    return "test-thread-001"
+
+
+@pytest.fixture
+def thread_config(thread_id) -> dict:
+    """A LangGraph thread config for use in tests."""
+    return {"configurable": {"thread_id": thread_id}}
