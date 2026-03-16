@@ -5,7 +5,7 @@ import logging
 import os
 from typing import cast
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.database.models import Base, DynamicConfig, Reservation
@@ -27,9 +27,24 @@ def init_db():
     """
     Create all tables if they do not exist.
     Seed DynamicConfig from data/dynamic/seed_data.csv if the table is empty.
+
+    Auto-migration: if upgrading from Stage 1 the reservations table may be
+    missing the thread_id column; this function adds it automatically.
     """
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+
+    # Auto-migrate: add thread_id column if missing (supports upgrade from Stage 1)
+    if engine.dialect.name == "sqlite":
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT name FROM pragma_table_info('reservations') WHERE name='thread_id'")
+            ).fetchone()
+            if result is None:
+                conn.execute(text("ALTER TABLE reservations ADD COLUMN thread_id VARCHAR"))
+                conn.commit()
+                logger.info("DB migration applied: added thread_id column to reservations table")
+
     session = SessionLocal()
     try:
         if session.query(DynamicConfig).count() == 0:
@@ -106,6 +121,52 @@ def get_all_parking_ids_and_names() -> list[str]:
         session.close()
 
 
+def save_reservation_with_thread(data: dict, thread_id: str) -> bool:
+    """
+    Save a confirmed reservation to the database including the given thread_id.
+    Status is set to "pending" awaiting administrator review.
+
+    Args:
+        data: dict with parking_id, name, surname, car_number, start_date, end_date.
+        thread_id: LangGraph thread_id to correlate this reservation with its chatbot
+            session. Must be non-empty; a warning is logged if it is falsy.
+
+    Returns:
+        True on success, False on error.
+    """
+    if not thread_id:
+        logger.warning("save_reservation_with_thread called with empty thread_id; reservation will not be linkable")
+
+    from app.database.models import Reservation
+    from datetime import date
+
+    session = SessionLocal()
+    try:
+        reservation = Reservation(
+            parking_id=data["parking_id"],
+            name=data["name"],
+            surname=data["surname"],
+            car_number=data["car_number"],
+            start_date=date.fromisoformat(data["start_date"]),
+            end_date=date.fromisoformat(data["end_date"]),
+            status="pending",
+            thread_id=thread_id,
+        )
+        session.add(reservation)
+        session.commit()
+        logger.info(
+            "Reservation saved for %s %s with thread_id=%s",
+            data["name"], data["surname"], thread_id,
+        )
+        return True
+    except Exception as e:
+        session.rollback()
+        logger.error("Failed to save reservation with thread: %s", e)
+        return False
+    finally:
+        session.close()
+
+
 def get_pending_reservations() -> list[dict]:
     """Return all reservations with status 'pending' as a list of dicts."""
     session = SessionLocal()
@@ -131,10 +192,19 @@ def get_pending_reservations() -> list[dict]:
 
 
 def get_reservation_by_thread_id(thread_id: str) -> dict | None:
-    """Return a reservation by thread_id as a dict, or None if not found."""
+    """
+    Return the most recently created reservation matching thread_id as a dict,
+    or None if not found.  The result is deterministic even if multiple rows
+    share the same thread_id because rows are ordered by created_at descending.
+    """
     session = SessionLocal()
     try:
-        r = session.query(Reservation).filter(Reservation.thread_id == thread_id).first()
+        r = (
+            session.query(Reservation)
+            .filter(Reservation.thread_id == thread_id)
+            .order_by(Reservation.created_at.desc())
+            .first()
+        )
         if r is None:
             return None
         return {
@@ -153,13 +223,24 @@ def get_reservation_by_thread_id(thread_id: str) -> dict | None:
         session.close()
 
 
+VALID_STATUSES = {"pending", "confirmed", "rejected"}
+
+
 def update_reservation_status(thread_id: str, status: str) -> bool:
     """
     Update the status of a reservation identified by thread_id.
 
     Valid status values: "pending", "confirmed", "rejected".
-    Returns True on success, False if no reservation found or on error.
+    Returns True on success.
+    Returns False if status is not one of VALID_STATUSES, no reservation is
+    found for the given thread_id, or on a database error.
     """
+    if status not in VALID_STATUSES:
+        logger.error(
+            "update_reservation_status: invalid status %r; expected one of %s",
+            status, VALID_STATUSES,
+        )
+        return False
     session = SessionLocal()
     try:
         r = session.query(Reservation).filter(Reservation.thread_id == thread_id).first()

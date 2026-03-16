@@ -14,6 +14,8 @@ def base_state() -> ChatState:
         "reservation_data": {},
         "guardrail_triggered": False,
         "response": "",
+        "admin_decision": "",
+        "awaiting_admin": False,
     }
 
 
@@ -29,6 +31,8 @@ def mid_reservation_state() -> ChatState:
         },
         "guardrail_triggered": False,
         "response": "",
+        "admin_decision": "",
+        "awaiting_admin": False,
     }
 
 
@@ -49,6 +53,8 @@ def all_fields_collected_state() -> ChatState:
         },
         "guardrail_triggered": False,
         "response": "",
+        "admin_decision": "",
+        "awaiting_admin": False,
     }
 
 
@@ -61,7 +67,7 @@ def thread_id() -> str:
 @pytest.fixture
 def thread_config(thread_id) -> dict:
     """A LangGraph thread config for use in tests."""
-    return {"configurable": {"thread_id": thread_id}}
+    return get_thread_config(thread_id)
 
 
 @pytest.fixture
