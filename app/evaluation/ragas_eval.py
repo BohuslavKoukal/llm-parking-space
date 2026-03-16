@@ -59,6 +59,7 @@ def build_eval_sample(
 
         all_parking_ids = get_all_parking_ids_and_names()
         dynamic_summary = get_all_parkings_summary()
+
         enriched_question = (
             f"{question}\n\n"
             f"[Known parking IDs: {', '.join(all_parking_ids)}]\n"
