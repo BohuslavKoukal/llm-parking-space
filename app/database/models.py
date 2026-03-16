@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for parking chatbot data."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, Date, DateTime, Integer, String
 from sqlalchemy.orm import declarative_base
@@ -18,7 +18,7 @@ class DynamicConfig(Base):
     type = Column(String, nullable=False)
     key = Column(String, nullable=False)
     value = Column(String, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Reservation(Base):
@@ -34,4 +34,5 @@ class Reservation(Base):
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    thread_id = Column(String, nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
