@@ -104,3 +104,75 @@ def get_all_parking_ids_and_names() -> list[str]:
         return [row.parking_id for row in rows]
     finally:
         session.close()
+
+
+def get_pending_reservations() -> list[dict]:
+    """Return all reservations with status 'pending' as a list of dicts."""
+    session = SessionLocal()
+    try:
+        rows = session.query(Reservation).filter(Reservation.status == "pending").all()
+        return [
+            {
+                "id": r.id,
+                "parking_id": r.parking_id,
+                "name": r.name,
+                "surname": r.surname,
+                "car_number": r.car_number,
+                "start_date": r.start_date,
+                "end_date": r.end_date,
+                "status": r.status,
+                "thread_id": r.thread_id,
+                "created_at": r.created_at,
+            }
+            for r in rows
+        ]
+    finally:
+        session.close()
+
+
+def get_reservation_by_thread_id(thread_id: str) -> dict | None:
+    """Return a reservation by thread_id as a dict, or None if not found."""
+    session = SessionLocal()
+    try:
+        r = session.query(Reservation).filter(Reservation.thread_id == thread_id).first()
+        if r is None:
+            return None
+        return {
+            "id": r.id,
+            "parking_id": r.parking_id,
+            "name": r.name,
+            "surname": r.surname,
+            "car_number": r.car_number,
+            "start_date": r.start_date,
+            "end_date": r.end_date,
+            "status": r.status,
+            "thread_id": r.thread_id,
+            "created_at": r.created_at,
+        }
+    finally:
+        session.close()
+
+
+def update_reservation_status(thread_id: str, status: str) -> bool:
+    """
+    Update the status of a reservation identified by thread_id.
+
+    Valid status values: "pending", "confirmed", "rejected".
+    Returns True on success, False if no reservation found or on error.
+    """
+    session = SessionLocal()
+    try:
+        r = session.query(Reservation).filter(Reservation.thread_id == thread_id).first()
+        if r is None:
+            logger.warning("update_reservation_status: no reservation with thread_id=%s", thread_id)
+            return False
+        r.status = status
+        session.commit()
+        logger.info("Reservation thread_id=%s status updated to %s", thread_id, status)
+        return True
+    except Exception as e:
+        session.rollback()
+        logger.error("Failed to update reservation status: %s", e)
+        return False
+    finally:
+        session.close()

@@ -1,7 +1,11 @@
 import logging
+import os
+import sqlite3
+from threading import Lock
 from typing import TypedDict
 import re
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from app.chatbot.chains import (
     build_rag_chain,
@@ -309,7 +313,21 @@ def route_after_intent(state: ChatState) -> str:
 
 # -- Graph assembly -----------------------------------------------------------
 
-def build_graph():
+def get_thread_config(thread_id: str) -> dict:
+    """
+    Return a LangGraph config dict for the given thread_id.
+
+    This dict is passed as the `config` argument to every graph invocation
+    so that the SqliteSaver checkpointer can persist and resume the correct
+    conversation state across turns.
+
+    Usage:
+        result = chatbot_graph.invoke(state, config=get_thread_config(thread_id))
+    """
+    return {"configurable": {"thread_id": thread_id}}
+
+
+def build_graph(conn_string: str | None = None):
     """
     Assemble and compile the LangGraph chatbot graph.
 
@@ -318,7 +336,16 @@ def build_graph():
          |- rag_node -> response_node -> END
          |- reservation_node -> response_node -> END
          '- unknown_node -> response_node -> END
+
+    Args:
+        conn_string: Optional SQLite connection string. Defaults to the
+            CHECKPOINT_DB_URL env var (or "checkpoints.db"). Pass ":memory:"
+            in tests to get a fresh, isolated in-memory checkpointer.
     """
+    checkpoint_db_url = conn_string if conn_string is not None else os.getenv("CHECKPOINT_DB_URL", "checkpoints.db")
+    conn = sqlite3.connect(checkpoint_db_url, check_same_thread=False)
+    saver = SqliteSaver(conn)
+
     graph = StateGraph(ChatState)
 
     # Add nodes
@@ -343,8 +370,12 @@ def build_graph():
     graph.add_edge("unknown_node", "response_node")
     graph.add_edge("response_node", END)
 
-    return graph.compile()
+    compiled = graph.compile(checkpointer=saver)
+    # Anchor the connection to the compiled graph so it is not garbage-collected
+    # as long as the graph is alive, keeping the underlying SQLite connection open.
+    compiled._sqlite_conn = conn
+    return compiled, saver
 
 
-# Compiled graph instance - imported by main.py
-chatbot_graph = build_graph()
+# Compiled graph and checkpointer instances - imported by main.py and other modules
+chatbot_graph, checkpointer = build_graph()
