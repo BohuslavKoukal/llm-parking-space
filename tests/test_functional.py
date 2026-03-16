@@ -1,10 +1,7 @@
 from copy import deepcopy
-from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from app.chatbot import graph as graph_module
 from app.chatbot.graph import (
@@ -17,7 +14,6 @@ from app.chatbot.graph import (
     unknown_node,
     chatbot_graph,
 )
-from app.database.models import Base, Reservation
 from app.guardrails.filters import get_block_reason
 
 
@@ -219,32 +215,18 @@ class TestReservationFlow:
         required_fields = ["parking_id", "name", "surname", "car_number", "start_date", "end_date"]
         assert all(state["reservation_data"].get(field) for field in required_fields)
 
-    def test_confirmation_yes_saves_to_database(self, all_fields_collected_state, monkeypatch, tmp_path):
-        """Confirming with yes should call save and persist a pending reservation in SQLite."""
-        db_path = tmp_path / "functional_reservations.db"
-        engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
-        Base.metadata.create_all(bind=engine)
-        test_session_local = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-
-        monkeypatch.setattr("app.database.sql_client.SessionLocal", test_session_local)
-
+    def test_confirmation_yes_sets_awaiting_admin(self, all_fields_collected_state):
+        """Confirming with yes should set awaiting_admin=True without saving to database."""
         state = deepcopy(all_fields_collected_state)
         state["user_input"] = "yes"
 
-        with patch("app.chatbot.graph.save_reservation", wraps=graph_module.save_reservation) as save_spy:
+        with patch("app.chatbot.graph.save_reservation") as save_spy:
             result = reservation_node(state)
 
-        assert save_spy.called
-        assert "submitted successfully" in result["response"].lower()
-
-        session = test_session_local()
-        try:
-            rows = session.query(Reservation).all()
-            assert len(rows) == 1
-            assert cast(str, rows[0].status) == "pending"
-            assert cast(str, rows[0].parking_id) == "parking_003"
-        finally:
-            session.close()
+        assert save_spy.call_count == 0, "save_reservation must not be called; save moved to submit_to_admin_node"
+        assert result["awaiting_admin"] is True
+        assert result["reservation_data"].get("confirmed") == "yes"
+        assert "administrator" in result["response"].lower() or "pending" in result["response"].lower()
 
     def test_confirmation_no_resets_state(self, all_fields_collected_state):
         """Denying confirmation should reset reservation data and restart collection flow."""

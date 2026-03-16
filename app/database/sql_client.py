@@ -106,6 +106,48 @@ def get_all_parking_ids_and_names() -> list[str]:
         session.close()
 
 
+def save_reservation_with_thread(data: dict, thread_id: str) -> bool:
+    """
+    Save a confirmed reservation to the database including the given thread_id.
+    Status is set to "pending" awaiting administrator review.
+
+    Args:
+        data: dict with parking_id, name, surname, car_number, start_date, end_date.
+        thread_id: LangGraph thread_id to correlate this reservation with its chatbot session.
+
+    Returns:
+        True on success, False on error.
+    """
+    from app.database.models import Reservation
+    from datetime import date
+
+    session = SessionLocal()
+    try:
+        reservation = Reservation(
+            parking_id=data["parking_id"],
+            name=data["name"],
+            surname=data["surname"],
+            car_number=data["car_number"],
+            start_date=date.fromisoformat(data["start_date"]),
+            end_date=date.fromisoformat(data["end_date"]),
+            status="pending",
+            thread_id=thread_id,
+        )
+        session.add(reservation)
+        session.commit()
+        logger.info(
+            "Reservation saved for %s %s with thread_id=%s",
+            data["name"], data["surname"], thread_id,
+        )
+        return True
+    except Exception as e:
+        session.rollback()
+        logger.error("Failed to save reservation with thread: %s", e)
+        return False
+    finally:
+        session.close()
+
+
 def get_pending_reservations() -> list[dict]:
     """Return all reservations with status 'pending' as a list of dicts."""
     session = SessionLocal()

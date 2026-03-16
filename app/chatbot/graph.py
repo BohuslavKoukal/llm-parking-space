@@ -6,7 +6,9 @@ from typing import TypedDict
 import re
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import interrupt, Command
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.runnables import RunnableConfig
 from app.chatbot.chains import (
     build_rag_chain,
     build_intent_chain,
@@ -29,6 +31,8 @@ class ChatState(TypedDict):
     reservation_data: dict       # collected fields so far
     guardrail_triggered: bool
     response: str
+    admin_decision: str          # "approved" | "rejected" | ""
+    awaiting_admin: bool         # True while graph is paused for admin review
 
 
 # -- Node implementations -----------------------------------------------------
@@ -193,24 +197,20 @@ def reservation_node(state: ChatState) -> ChatState:
     negative_confirmations = {"no", "cancel", "change", "wrong"}
 
     if confirmation_tokens & positive_confirmations:
-        # Save to database
-        success = save_reservation(collected)
-        if success:
-            # Mark as confirmed and clear for next reservation
-            collected["confirmed"] = "yes"
-            response = (
-                f"✅ Your reservation has been submitted successfully!\n\n"
-                f"**Summary:**\n"
-                f"- Parking: {collected['parking_id']}\n"
-                f"- Name: {collected['name']} {collected['surname']}\n"
-                f"- Car: {collected['car_number']}\n"
-                f"- Period: {collected['start_date']} to {collected['end_date']}\n\n"
-                f"Your reservation is now **pending administrator confirmation**. "
-                f"You will be notified once it is approved."
-            )
-        else:
-            response = "❌ There was an error saving your reservation. Please try again."
-        return {**state, "reservation_data": {} if success else collected, "response": response}
+        # Mark as confirmed and flag for admin review.
+        # DB save happens in submit_to_admin_node once the graph resumes.
+        collected["confirmed"] = "yes"
+        response = (
+            f"Your reservation has been submitted for administrator review!\n\n"
+            f"**Summary:**\n"
+            f"- Parking: {collected['parking_id']}\n"
+            f"- Name: {collected['name']} {collected['surname']}\n"
+            f"- Car: {collected['car_number']}\n"
+            f"- Period: {collected['start_date']} to {collected['end_date']}\n\n"
+            f"Your reservation is now **pending administrator confirmation**. "
+            f"You will be notified once it is approved."
+        )
+        return {**state, "reservation_data": collected, "response": response, "awaiting_admin": True}
 
     elif confirmation_tokens & negative_confirmations:
         # Reset and start over
@@ -255,6 +255,72 @@ def save_reservation(data: dict) -> bool:
         return False
     finally:
         session.close()
+
+
+def submit_to_admin_node(state: ChatState, config: RunnableConfig) -> ChatState:
+    """
+    Save reservation to DB then pause execution for admin review via interrupt().
+
+    On resume (when admin calls invoke(Command(resume=decision))), the node
+    re-runs from the top, so the DB save is idempotent — guarded by an existence
+    check to prevent duplicate inserts.
+    """
+    from app.database.sql_client import save_reservation_with_thread, get_reservation_by_thread_id
+
+    thread_id = config["configurable"]["thread_id"]
+    collected = state.get("reservation_data", {})
+
+    # Idempotent save: only insert if no reservation exists for this thread_id yet.
+    existing = get_reservation_by_thread_id(thread_id)
+    if not existing:
+        success = save_reservation_with_thread(collected, thread_id)
+        if not success:
+            logger.error("Failed to save reservation for thread_id=%s", thread_id)
+
+    # Pause graph execution; resumes when admin sends Command(resume=decision).
+    decision = interrupt({
+        "type": "admin_review_required",
+        "reservation": collected,
+        "thread_id": thread_id,
+        "message": (
+            f"Reservation from {collected.get('name', '')} {collected.get('surname', '')} "
+            f"for {collected.get('parking_id', '')} "
+            f"({collected.get('start_date', '')} to {collected.get('end_date', '')})"
+        ),
+    })
+
+    logger.info("Admin decision received: %s for thread_id=%s", decision, thread_id)
+    return {**state, "admin_decision": decision, "awaiting_admin": False}
+
+
+def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatState:
+    """Update reservation status to 'confirmed' after admin approval."""
+    from app.database.sql_client import update_reservation_status
+
+    thread_id = config["configurable"]["thread_id"]
+    update_reservation_status(thread_id, "confirmed")
+    logger.info("Reservation confirmed for thread_id=%s", thread_id)
+
+    response = (
+        "Your reservation has been **confirmed** by the administrator!\n\n"
+        "We look forward to seeing you. Enjoy your parking experience."
+    )
+    return {**state, "reservation_data": {}, "response": response}
+
+
+def notify_rejection_node(state: ChatState, config: RunnableConfig) -> ChatState:
+    """Update reservation status to 'rejected' after admin rejection."""
+    from app.database.sql_client import update_reservation_status
+
+    thread_id = config["configurable"]["thread_id"]
+    update_reservation_status(thread_id, "rejected")
+    logger.info("Reservation rejected for thread_id=%s", thread_id)
+
+    response = (
+        "We're sorry, your reservation request has been rejected by the administrator. "
+        "Please try again or contact us for more information."
+    )
+    return {**state, "reservation_data": {}, "response": response}
 
 
 def response_node(state: ChatState) -> ChatState:
@@ -311,6 +377,20 @@ def route_after_intent(state: ChatState) -> str:
         return "unknown_node"
 
 
+def route_after_reservation(state: ChatState) -> str:
+    """Route from reservation_node: if awaiting admin review go to submit_to_admin, else finish."""
+    if state.get("awaiting_admin", False):
+        return "submit_to_admin"
+    return "response_node"
+
+
+def route_after_admin_decision(state: ChatState) -> str:
+    """Route after interrupt resumes: approved goes to record_reservation, anything else to notify_rejection."""
+    if state.get("admin_decision", "") == "approved":
+        return "record_reservation"
+    return "notify_rejection"
+
+
 # -- Graph assembly -----------------------------------------------------------
 
 def get_thread_config(thread_id: str) -> dict:
@@ -334,7 +414,11 @@ def build_graph(conn_string: str | None = None):
     Flow:
     START -> guardrail_node -> intent_node -> (conditional routing)
          |- rag_node -> response_node -> END
-         |- reservation_node -> response_node -> END
+         |- reservation_node -> (route_after_reservation)
+         |    |- response_node -> END
+         |    '- submit_to_admin [interrupt] -> (route_after_admin_decision)
+         |         |- record_reservation -> response_node -> END
+         |         '- notify_rejection   -> response_node -> END
          '- unknown_node -> response_node -> END
 
     Args:
@@ -355,6 +439,9 @@ def build_graph(conn_string: str | None = None):
     graph.add_node("reservation_node", reservation_node)
     graph.add_node("unknown_node", unknown_node)
     graph.add_node("response_node", response_node)
+    graph.add_node("submit_to_admin", submit_to_admin_node)
+    graph.add_node("record_reservation", record_reservation_node)
+    graph.add_node("notify_rejection", notify_rejection_node)
 
     # Add edges
     graph.add_edge(START, "guardrail_node")
@@ -366,7 +453,16 @@ def build_graph(conn_string: str | None = None):
         "unknown_node": "unknown_node"
     })
     graph.add_edge("rag_node", "response_node")
-    graph.add_edge("reservation_node", "response_node")
+    graph.add_conditional_edges("reservation_node", route_after_reservation, {
+        "submit_to_admin": "submit_to_admin",
+        "response_node": "response_node",
+    })
+    graph.add_conditional_edges("submit_to_admin", route_after_admin_decision, {
+        "record_reservation": "record_reservation",
+        "notify_rejection": "notify_rejection",
+    })
+    graph.add_edge("record_reservation", "response_node")
+    graph.add_edge("notify_rejection", "response_node")
     graph.add_edge("unknown_node", "response_node")
     graph.add_edge("response_node", END)
 
