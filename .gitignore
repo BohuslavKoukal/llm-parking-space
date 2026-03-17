@@ -204,6 +204,7 @@ cython_debug/
 # Generated evaluation reports and local databases
 reports/
 *.db
+data/reservations.txt
 
 # Marimo
 marimo/_static/

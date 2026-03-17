@@ -17,6 +17,7 @@ from app.chatbot.chains import (
 from app.rag.weaviate_client import get_weaviate_client, get_retriever
 from app.database.sql_client import get_all_parkings_summary, get_all_parking_ids_and_names
 from app.guardrails.filters import is_sensitive, get_block_reason
+from app.mcp_client.tools import write_reservation_via_mcp
 
 logger = logging.getLogger(__name__)
 
@@ -321,8 +322,36 @@ def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatSta
         )
         return {**state, "response": response}
 
-    logger.info(f"Reservation confirmed for thread: {thread_id[:8]}")
+    collected = state.get("reservation_data", {})
     response = "Your reservation has been confirmed."
+
+    try:
+        mcp_result = write_reservation_via_mcp(
+            name=collected.get("name", ""),
+            surname=collected.get("surname", ""),
+            car_number=collected.get("car_number", ""),
+            parking_id=collected.get("parking_id", ""),
+            start_date=collected.get("start_date", ""),
+            end_date=collected.get("end_date", ""),
+            approval_time=None,
+        )
+        logger.info("MCP write result for thread_id=%s: %s", thread_id, mcp_result)
+        if not mcp_result.lower().startswith("reservation written successfully"):
+            logger.error("MCP write failed for thread_id=%s: %s", thread_id, mcp_result)
+            response = (
+                "Your reservation is confirmed. Note: file recording encountered an issue "
+                "but your booking is saved in our system."
+            )
+        else:
+            logger.info("Reservation written to file via MCP for thread: %s", thread_id[:8])
+    except Exception as exc:
+        logger.exception("MCP write raised exception for thread_id=%s", thread_id)
+        response = (
+            "Your reservation is confirmed. Note: file recording encountered an issue "
+            "but your booking is saved in our system."
+        )
+
+    logger.info(f"Reservation confirmed for thread: {thread_id[:8]}")
     return {**state, "reservation_data": {}, "response": response}
 
 
