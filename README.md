@@ -67,6 +67,36 @@ Parking Chatbot is a production-ready Python scaffold for a Retrieval-Augmented 
 > `reservations` table.  The application auto-migrates the schema on first
 > run — no manual action is required.
 
+## Running the Application
+
+Run each step in order for a full local setup:
+
+**Step 1 — Start Weaviate:**
+```bash
+docker compose up -d weaviate
+```
+
+**Step 2 — Initialise the database:**
+```bash
+python -c "from app.database.sql_client import init_db; init_db()"
+```
+
+**Step 3 — Ingest parking data into Weaviate:**
+```bash
+python -m app.rag.ingestion
+```
+
+**Step 4 — Start the chatbot:**
+```bash
+streamlit run app/main.py
+```
+
+**Step 5 — Run the admin console (when a reservation awaits approval):**
+```bash
+python scripts/admin_review.py
+```
+> The admin console must be run in a **separate terminal** while the chatbot is running. Both processes share `checkpoints.db` and `parking.db`.
+
 ## Important: Python Path Setup
 This project requires the repository root to be on the Python path.
 This is handled automatically if you copy .env.example to .env:
@@ -117,7 +147,22 @@ parking-chatbot/
 ├── data/
 │   ├── static/
 │   └── dynamic/
+├── docs/
+│   └── SOLUTION.md
+├── scripts/
+│   ├── admin_review.py
+│   └── run_evaluation.py
 ├── tests/
+│   ├── conftest.py
+│   ├── test_rag.py
+│   ├── test_rag_db.py
+│   ├── test_chatbot.py
+│   ├── test_guardrails.py
+│   ├── test_functional.py
+│   ├── test_evaluation.py
+│   ├── test_checkpointer.py
+│   ├── test_hitl.py
+│   └── test_admin_cli.py
 ├── .github/workflows/
 ├── .env.example
 ├── requirements.txt
@@ -174,8 +219,11 @@ What it does:
 
 > **Note:** The admin console and the chatbot share the same `checkpoints.db` and `parking.db` files.
 
-## Stages Overview
-- **Stage 1:** Core backend setup (RAG wiring, graph flow, and baseline modules).
-- **Stage 2:** Reservation workflow hardening (validation, persistence, and admin confirmations).
-- **Stage 3:** Safety and observability expansion (guardrails, monitoring, and failure handling).
-- **Stage 4:** Evaluation and optimization (RAGAS metrics, reporting, and production tuning).
+## Stage Completion Status
+
+| Stage | Description | Status |
+|---|---|---|
+| 1 | RAG Chatbot + Guardrails + Evaluation | ✅ Complete |
+| 2 | Human-in-the-Loop Agent | ✅ Complete |
+| 3 | MCP Server | 🔄 Planned |
+| 4 | Full Orchestration | 🔄 Planned |

@@ -7,6 +7,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+from langgraph.types import Command
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -394,3 +395,88 @@ def test_awaiting_admin_blocks_further_graph_invocation():
 
     assert not invoke_was_called
 
+
+# ---------------------------------------------------------------------------
+# Test 11 – full HITL flow: user confirms → admin approves
+# ---------------------------------------------------------------------------
+
+def test_full_hitl_flow_approved(fresh_graph):
+    """
+    Full end-to-end HITL flow for the approved path.
+
+    1. User confirms reservation → graph interrupts at submit_to_admin_node.
+    2. Admin resumes with 'approved' → record_reservation_node runs.
+    3. Final state: admin_decision='approved', reservation_data cleared,
+       DB row status='confirmed'.
+    """
+    test_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=test_engine)
+    TestSession = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
+
+    tid = f"hitl-{uuid.uuid4()}"
+    config = {"configurable": {"thread_id": tid}}
+    state = _full_graph_input_state()
+
+    original_session = sql_client.SessionLocal
+    sql_client.SessionLocal = TestSession
+    try:
+        with _all_external_patches():
+            fresh_graph.invoke(state, config=config)
+            result = fresh_graph.invoke(Command(resume="approved"), config=config)
+
+        assert result["admin_decision"] == "approved"
+        assert result["reservation_data"] == {}
+
+        session = TestSession()
+        try:
+            r = session.query(Reservation).filter_by(thread_id=tid).first()
+            assert r is not None
+            assert r.status == "confirmed"
+        finally:
+            session.close()
+    finally:
+        sql_client.SessionLocal = original_session
+        Base.metadata.drop_all(bind=test_engine)
+
+
+# ---------------------------------------------------------------------------
+# Test 12 – full HITL flow: user confirms → admin rejects
+# ---------------------------------------------------------------------------
+
+def test_full_hitl_flow_rejected(fresh_graph):
+    """
+    Full end-to-end HITL flow for the rejected path.
+
+    1. User confirms reservation → graph interrupts at submit_to_admin_node.
+    2. Admin resumes with 'rejected' → notify_rejection_node runs.
+    3. Final state: admin_decision='rejected', reservation_data cleared,
+       DB row status='rejected'.
+    """
+    test_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=test_engine)
+    TestSession = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
+
+    tid = f"hitl-{uuid.uuid4()}"
+    config = {"configurable": {"thread_id": tid}}
+    state = _full_graph_input_state()
+
+    original_session = sql_client.SessionLocal
+    sql_client.SessionLocal = TestSession
+    try:
+        with _all_external_patches():
+            fresh_graph.invoke(state, config=config)
+            result = fresh_graph.invoke(Command(resume="rejected"), config=config)
+
+        assert result["admin_decision"] == "rejected"
+        assert result["reservation_data"] == {}
+
+        session = TestSession()
+        try:
+            r = session.query(Reservation).filter_by(thread_id=tid).first()
+            assert r is not None
+            assert r.status == "rejected"
+        finally:
+            session.close()
+    finally:
+        sql_client.SessionLocal = original_session
+        Base.metadata.drop_all(bind=test_engine)
