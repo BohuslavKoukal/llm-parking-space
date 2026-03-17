@@ -168,10 +168,19 @@ def save_reservation_with_thread(data: dict, thread_id: str) -> bool:
 
 
 def get_pending_reservations() -> list[dict]:
-    """Return all reservations with status 'pending' as a list of dicts."""
+    """Return all pending reservations that have a thread_id as a list of dicts.
+
+    Reservations without a thread_id are excluded because they cannot be resumed
+    via the LangGraph admin console.
+    """
     session = SessionLocal()
     try:
-        rows = session.query(Reservation).filter(Reservation.status == "pending").all()
+        rows = (
+            session.query(Reservation)
+            .filter(Reservation.status == "pending")
+            .filter(Reservation.thread_id.isnot(None))
+            .all()
+        )
         return [
             {
                 "id": r.id,

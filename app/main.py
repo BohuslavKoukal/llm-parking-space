@@ -7,10 +7,9 @@ import logging
 from dotenv import load_dotenv
 import streamlit as st
 from app.chatbot.graph import ChatState, chatbot_graph, get_thread_config
-from app.database.sql_client import init_db, get_reservation_by_thread_id
+from app.database.sql_client import init_db
 from app.rag.weaviate_client import get_weaviate_client, health_check
 from langchain_core.messages import HumanMessage, AIMessage
-from langgraph.types import Command
 
 load_dotenv()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -60,62 +59,12 @@ with st.sidebar:
     st.markdown("Database: 🟢 Connected")
     if "thread_id" in st.session_state:
         st.markdown(f"Thread: `{st.session_state.thread_id[:8]}...`")
-    if st.session_state.get("awaiting_admin", False):
-        st.markdown("Reservation: ⏳ Awaiting admin approval")
-    else:
-        st.markdown("Reservation: ✅ No pending reservation")
     st.markdown("---")
-    st.markdown("**Available Parkings**")
-    st.markdown("- 🏙️ CityPark Central\n- ✈️ AirportPark Express\n- 🛍️ ShoppingMall Park\n- 🏟️ Stadium Park\n- 🏛️ OldTown Garage")
-
-    # Admin review panel — only shown when a reservation is awaiting approval
+    st.markdown("**Reservation Status**")
     if st.session_state.get("awaiting_admin", False):
-        st.markdown("---")
-        st.markdown("**🔐 Admin Review**")
-        res = get_reservation_by_thread_id(st.session_state.thread_id)
-        if res:
-            st.markdown(f"**{res['name']} {res['surname']}**")
-            st.markdown(f"Parking: `{res['parking_id']}`")
-            st.markdown(f"Car: `{res['car_number']}`")
-            st.markdown(f"Dates: {res['start_date']} → {res['end_date']}")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✅ Approve", key="btn_approve"):
-                try:
-                    thread_config = get_thread_config(st.session_state.thread_id)
-                    resume_result = chatbot_graph.invoke(
-                        Command(resume="approved"), config=thread_config
-                    )
-                    approval_response = resume_result.get(
-                        "response", "Your reservation has been approved!"
-                    )
-                    st.session_state.messages = st.session_state.messages + [
-                        AIMessage(content=approval_response)
-                    ]
-                    st.session_state.reservation_data = resume_result.get("reservation_data", {})
-                    st.session_state.awaiting_admin = False
-                except Exception as e:
-                    logger.error("Resume error (approve): %s", e)
-                st.rerun()
-        with col2:
-            if st.button("❌ Reject", key="btn_reject"):
-                try:
-                    thread_config = get_thread_config(st.session_state.thread_id)
-                    resume_result = chatbot_graph.invoke(
-                        Command(resume="rejected"), config=thread_config
-                    )
-                    rejection_response = resume_result.get(
-                        "response", "Your reservation has been rejected."
-                    )
-                    st.session_state.messages = st.session_state.messages + [
-                        AIMessage(content=rejection_response)
-                    ]
-                    st.session_state.reservation_data = resume_result.get("reservation_data", {})
-                    st.session_state.awaiting_admin = False
-                except Exception as e:
-                    logger.error("Resume error (reject): %s", e)
-                st.rerun()
-
+        st.markdown("⏳ Awaiting admin approval")
+    else:
+        st.markdown("✅ No pending reservation")
     st.markdown("---")
     if st.button("Clear conversation"):
         st.session_state.messages = []
@@ -151,12 +100,12 @@ for message in st.session_state.messages:
 
 # Waiting notice while admin decision is pending
 if st.session_state.get("awaiting_admin", False):
-    st.info("⏳ Your reservation is awaiting administrator approval. Use the sidebar to approve or reject.")
+    st.info("⏳ Your reservation is awaiting administrator approval.")
 
 # Handle new input
 user_input = st.chat_input(
     "Ask about parking or make a reservation...",
-    disabled=st.session_state.is_processing or st.session_state.get("awaiting_admin", False)
+    disabled=st.session_state.is_processing,
 )
 
 if user_input and not st.session_state.is_processing:
@@ -170,36 +119,34 @@ if user_input and not st.session_state.is_processing:
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
-                initial_state: ChatState = {
-                    "messages": st.session_state.messages,
-                    "user_input": user_input,
-                    "intent": "",
-                    "reservation_data": st.session_state.reservation_data,
-                    "guardrail_triggered": False,
-                    "response": "",
-                    "admin_decision": "",
-                    "awaiting_admin": False,
-                }
-                thread_config = get_thread_config(st.session_state.thread_id)
-                result = chatbot_graph.invoke(initial_state, config=thread_config)
-
-                if "__interrupt__" in result:
-                    # Graph paused at submit_to_admin_node — response_node did not run.
-                    response = result.get(
-                        "response",
-                        "⏳ Your reservation has been submitted and is awaiting administrator approval. "
-                        "You will be notified of the decision.",
+                if st.session_state.awaiting_admin:
+                    # CASE 2: Graph is interrupted — show pending notice, no invoke
+                    response = (
+                        "⏳ Your reservation is currently pending administrator "
+                        "approval. Please wait for the administrator to review "
+                        "your request. You will be notified of the outcome."
                     )
-                    st.session_state.awaiting_admin = True
-                    st.session_state.reservation_data = result.get("reservation_data", {})
-                    st.session_state.messages = st.session_state.messages + [
-                        HumanMessage(content=user_input),
-                        AIMessage(content=response),
-                    ]
                 else:
+                    # CASE 1: Normal flow
+                    initial_state: ChatState = {
+                        "messages": st.session_state.messages,
+                        "user_input": user_input,
+                        "intent": "",
+                        "reservation_data": st.session_state.reservation_data,
+                        "guardrail_triggered": False,
+                        "response": "",
+                        "admin_decision": "",
+                        "awaiting_admin": False,
+                    }
+                    thread_config = get_thread_config(st.session_state.thread_id)
+                    result = chatbot_graph.invoke(initial_state, config=thread_config)
                     response = result["response"]
                     st.session_state.reservation_data = result.get("reservation_data", {})
                     st.session_state.messages = result.get("messages", [])
+
+                    # Check if graph is now paused at an interrupt
+                    state_snapshot = chatbot_graph.get_state(thread_config)
+                    st.session_state.awaiting_admin = bool(state_snapshot.next)
 
             except Exception as e:
                 logger.error(f"Graph invocation error: {e}")

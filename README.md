@@ -153,6 +153,27 @@ Before running evaluation, ensure:
 - Weaviate is running and reachable
 - Parking data has already been ingested into Weaviate
 
+## Admin Review Console
+
+The admin CLI allows an administrator to approve or reject pending parking reservations.
+
+Prerequisites:
+- The chatbot app must be running (`streamlit run app/main.py`)
+- A user must have completed the reservation flow
+
+How to run in a separate terminal:
+```bash
+python scripts/admin_review.py
+```
+
+What it does:
+- Lists all pending reservations waiting for admin approval
+- Allows admin to approve or reject each reservation
+- Resumes the paused LangGraph graph with the admin decision
+- User sees the result on their next message in the chat UI
+
+> **Note:** The admin console and the chatbot share the same `checkpoints.db` and `parking.db` files.
+
 ## Stages Overview
 - **Stage 1:** Core backend setup (RAG wiring, graph flow, and baseline modules).
 - **Stage 2:** Reservation workflow hardening (validation, persistence, and admin confirmations).

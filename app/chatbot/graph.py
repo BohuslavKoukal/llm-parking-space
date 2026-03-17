@@ -290,6 +290,7 @@ def submit_to_admin_node(state: ChatState, config: RunnableConfig) -> ChatState:
             logger.error("Failed to save reservation for thread_id=%s", thread_id)
 
     # Pause graph execution; resumes when admin sends Command(resume=decision).
+    logger.info(f"Graph interrupted for admin review. Thread: {thread_id[:8]}")
     decision = interrupt({
         "type": "admin_review_required",
         "reservation": collected,
@@ -315,17 +316,13 @@ def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatSta
     if not result:
         logger.error("Failed to confirm reservation for thread_id=%s", thread_id)
         response = (
-            "Your reservation was approved but we encountered an error "
-            "confirming it in our system. Please contact the administrator "
-            f"with your booking reference: {thread_id[:8]}"
+            "Your reservation was approved but we encountered an error confirming it. "
+            f"Please contact the administrator with your booking reference: {thread_id[:8]}"
         )
-        return {**state, "response": response}
+    else:
+        logger.info(f"Reservation confirmed for thread: {thread_id[:8]}")
+        response = "Your reservation has been confirmed."
 
-    logger.info("Reservation confirmed for thread_id=%s", thread_id)
-    response = (
-        "Your reservation has been **confirmed** by the administrator!\n\n"
-        "We look forward to seeing you. Enjoy your parking experience."
-    )
     return {**state, "reservation_data": {}, "response": response}
 
 
@@ -343,11 +340,9 @@ def notify_rejection_node(state: ChatState, config: RunnableConfig) -> ChatState
             "Please contact the administrator directly."
         )
     else:
-        logger.info("Reservation rejected for thread_id=%s", thread_id)
-        response = (
-            "We're sorry, your reservation request has been rejected by the administrator. "
-            "Please try again or contact us for more information."
-        )
+        logger.info(f"Reservation rejected for thread: {thread_id[:8]}")
+        response = "Your reservation request has been rejected."
+
     return {**state, "reservation_data": {}, "response": response}
 
 
