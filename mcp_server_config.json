@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "parking-reservation-server": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server"],
+      "env": {
+        "MCP_API_KEY": "${MCP_API_KEY}",
+        "RESERVATIONS_FILE_PATH": "${RESERVATIONS_FILE_PATH}"
+      }
+    }
+  }
+}
