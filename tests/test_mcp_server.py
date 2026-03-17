@@ -158,6 +158,73 @@ def test_concurrent_writes_do_not_corrupt_file(monkeypatch, tmp_path):
         assert " to " in line
 
 
+def test_write_reservation_appends_multiple_entries(monkeypatch, tmp_path):
+    reservations_file = tmp_path / "reservations.txt"
+    file_writer = _load_file_writer_module(monkeypatch, reservations_file)
+
+    file_writer.write_reservation(
+        name="Alice",
+        surname="Smith",
+        car_number="AAA-111",
+        parking_id="parking_001",
+        start_date="2026-04-01",
+        end_date="2026-04-03",
+        approval_time="2026-03-17T10:00:00",
+    )
+    file_writer.write_reservation(
+        name="Bob",
+        surname="Jones",
+        car_number="BBB-222",
+        parking_id="parking_002",
+        start_date="2026-04-04",
+        end_date="2026-04-05",
+        approval_time="2026-03-17T10:01:00",
+    )
+    file_writer.write_reservation(
+        name="Carol",
+        surname="Brown",
+        car_number="CCC-333",
+        parking_id="parking_003",
+        start_date="2026-04-06",
+        end_date="2026-04-07",
+        approval_time="2026-03-17T10:02:00",
+    )
+
+    lines = [line.strip() for line in reservations_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 3
+    assert "Alice" in lines[0]
+    assert "Bob" in lines[1]
+    assert "Carol" in lines[2]
+
+
+def test_get_file_stats_returns_correct_line_count(monkeypatch, tmp_path):
+    reservations_file = tmp_path / "reservations.txt"
+    file_writer = _load_file_writer_module(monkeypatch, reservations_file)
+
+    file_writer.write_reservation(
+        name="Alice",
+        surname="Smith",
+        car_number="AAA-111",
+        parking_id="parking_001",
+        start_date="2026-04-01",
+        end_date="2026-04-03",
+        approval_time="2026-03-17T10:00:00",
+    )
+    file_writer.write_reservation(
+        name="Bob",
+        surname="Jones",
+        car_number="BBB-222",
+        parking_id="parking_002",
+        start_date="2026-04-04",
+        end_date="2026-04-05",
+        approval_time="2026-03-17T10:01:00",
+    )
+
+    stats = file_writer.get_file_stats()
+    assert stats["exists"] is True
+    assert stats["line_count"] == 2
+
+
 def test_mcp_server_lists_three_tools(monkeypatch, tmp_path):
     monkeypatch.setenv("MCP_API_KEY", "test_mcp_key")
     monkeypatch.setenv("RESERVATIONS_FILE_PATH", str(tmp_path / "reservations.txt"))

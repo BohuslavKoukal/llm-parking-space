@@ -213,6 +213,66 @@ def test_write_reservation_via_mcp_sets_approval_time_if_none(monkeypatch):
     datetime.fromisoformat(approval_time)
 
 
+def test_write_reservation_via_mcp_uses_current_time_for_approval(monkeypatch):
+    monkeypatch.setenv("MCP_API_KEY", "test-key")
+
+    import app.mcp_client.tools as mcp_tools
+
+    mcp_tools = importlib.reload(mcp_tools)
+    call_record = {}
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def initialize(self):
+            return None
+
+        async def call_tool(self, name, arguments):
+            call_record["arguments"] = arguments
+            return SimpleNamespace(content=[SimpleNamespace(text="Reservation written successfully: ok")])
+
+    class FakeStdioClient:
+        async def __aenter__(self):
+            return ("read_stream", "write_stream")
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    before = datetime.now()
+    with (
+        patch("app.mcp_client.tools.stdio_client", return_value=FakeStdioClient()),
+        patch("app.mcp_client.tools.ClientSession", return_value=FakeSession()),
+    ):
+        mcp_tools.write_reservation_via_mcp(
+            name="John",
+            surname="Doe",
+            car_number="CAR-123",
+            parking_id="parking_001",
+            start_date="2026-04-01",
+            end_date="2026-04-03",
+            approval_time=None,
+        )
+    after = datetime.now()
+
+    approval_time = call_record["arguments"]["approval_time"]
+    parsed = datetime.fromisoformat(approval_time)
+    lower_delta = abs((parsed - before).total_seconds())
+    upper_delta = abs((after - parsed).total_seconds())
+    assert lower_delta <= 5 or upper_delta <= 5
+
+
+def test_write_reservation_tool_is_langchain_tool():
+    from app.mcp_client.tools import write_reservation_tool
+
+    assert hasattr(write_reservation_tool, "name")
+    assert hasattr(write_reservation_tool, "description")
+    assert write_reservation_tool.name == "write_parking_reservation"
+
+
 def test_record_reservation_node_calls_mcp():
     state = _sample_state()
     config = _sample_config()
