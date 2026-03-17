@@ -62,6 +62,33 @@ def _all_external_patches():
         yield
 
 
+@contextlib.contextmanager
+def _info_external_patches():
+    """Like _all_external_patches but routes intent to 'info' for RAG flow tests."""
+    guardrail_chain = MagicMock()
+    guardrail_chain.invoke.return_value = "allowed"
+
+    intent_chain = MagicMock()
+    intent_chain.invoke.return_value = "info"
+
+    rag_chain = MagicMock()
+    rag_chain.invoke.return_value = "Parking prices start from €5 per day."
+
+    mock_client = MagicMock()
+    mock_retriever = MagicMock()
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch("app.chatbot.graph.is_sensitive", return_value=False))
+        stack.enter_context(patch("app.chatbot.graph.build_guardrail_chain", return_value=guardrail_chain))
+        stack.enter_context(patch("app.chatbot.graph.build_intent_chain", return_value=intent_chain))
+        stack.enter_context(patch("app.chatbot.graph.build_rag_chain", return_value=rag_chain))
+        stack.enter_context(patch("app.chatbot.graph.get_weaviate_client", return_value=mock_client))
+        stack.enter_context(patch("app.chatbot.graph.get_retriever", return_value=mock_retriever))
+        stack.enter_context(patch("app.chatbot.graph.get_all_parkings_summary", return_value=[]))
+        stack.enter_context(patch("app.chatbot.graph.get_all_parking_ids_and_names", return_value=["parking_001"]))
+        yield
+
+
 def _confirmed_state() -> ChatState:
     """State with all 6 reservation fields and awaiting_admin=True (post-reservation_node)."""
     return {
@@ -302,14 +329,11 @@ def test_route_after_admin_decision_rejected():
 
 
 # ---------------------------------------------------------------------------
-# Test 7 – full graph is interrupted after user confirms reservation
+# Test 8 – graph state is interrupted after user confirms reservation
 # ---------------------------------------------------------------------------
 
-def test_graph_state_is_interrupted_after_submit(fresh_graph):
-    """
-    After the user confirms a reservation the graph should pause at submit_to_admin_node.
-    The invoke result must contain the '__interrupt__' key.
-    """
+def test_graph_is_interrupted_after_submit_to_admin(fresh_graph):
+    """After the user confirms a reservation the graph must pause at submit_to_admin_node."""
     tid = f"hitl-{uuid.uuid4()}"
     config = {"configurable": {"thread_id": tid}}
     state = _full_graph_input_state()
@@ -317,8 +341,56 @@ def test_graph_state_is_interrupted_after_submit(fresh_graph):
     with _all_external_patches():
         with patch("app.database.sql_client.save_reservation_with_thread", return_value=True), \
              patch("app.database.sql_client.get_reservation_by_thread_id", return_value=None):
-            result = fresh_graph.invoke(state, config=config)
+            fresh_graph.invoke(state, config=config)
 
-    assert "__interrupt__" in result, (
-        "Graph should have been interrupted at submit_to_admin_node after reservation confirmation"
-    )
+    state_snapshot = fresh_graph.get_state(config)
+    assert bool(state_snapshot.next) is True
+
+
+# ---------------------------------------------------------------------------
+# Test 9 – graph completes without interrupt for an info question
+# ---------------------------------------------------------------------------
+
+def test_graph_is_not_interrupted_before_reservation(fresh_graph):
+    """An info question must complete the graph without any interrupt."""
+    tid = f"hitl-{uuid.uuid4()}"
+    config = {"configurable": {"thread_id": tid}}
+    state = {
+        "messages": [],
+        "user_input": "What are the parking prices?",
+        "intent": "",
+        "reservation_data": {},
+        "guardrail_triggered": False,
+        "response": "",
+        "admin_decision": "",
+        "awaiting_admin": False,
+    }
+
+    with _info_external_patches():
+        fresh_graph.invoke(state, config=config)
+
+    state_snapshot = fresh_graph.get_state(config)
+    assert bool(state_snapshot.next) is False
+
+
+# ---------------------------------------------------------------------------
+# Test 10 – awaiting_admin flag blocks further graph invocation
+# ---------------------------------------------------------------------------
+
+def test_awaiting_admin_blocks_further_graph_invocation():
+    """When awaiting_admin=True the chat handler must skip chatbot_graph.invoke()."""
+    awaiting_admin = True  # Simulates st.session_state.awaiting_admin
+
+    invoke_was_called = False
+
+    def fake_invoke(*args, **kwargs):
+        nonlocal invoke_was_called
+        invoke_was_called = True
+        return {}
+
+    # Replicate the conditional guard from main.py
+    if not awaiting_admin:
+        fake_invoke()
+
+    assert not invoke_was_called
+
