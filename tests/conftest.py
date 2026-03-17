@@ -59,6 +59,36 @@ def all_fields_collected_state() -> ChatState:
 
 
 @pytest.fixture
+def approved_state() -> ChatState:
+    """State after admin has approved the reservation."""
+    return {
+        "messages": [],
+        "user_input": "",
+        "intent": "reservation",
+        "reservation_data": {},
+        "guardrail_triggered": False,
+        "response": "Your reservation has been confirmed.",
+        "admin_decision": "approved",
+        "awaiting_admin": False,
+    }
+
+
+@pytest.fixture
+def rejected_state() -> ChatState:
+    """State after admin has rejected the reservation."""
+    return {
+        "messages": [],
+        "user_input": "",
+        "intent": "reservation",
+        "reservation_data": {},
+        "guardrail_triggered": False,
+        "response": "Your reservation has been rejected.",
+        "admin_decision": "rejected",
+        "awaiting_admin": False,
+    }
+
+
+@pytest.fixture
 def thread_id() -> str:
     """A fixed thread_id for use in tests."""
     return "test-thread-001"

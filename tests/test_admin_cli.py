@@ -162,3 +162,49 @@ class TestGraphStateCheck:
 
             # The admin_review.py guard: `if not state_snapshot.next: → error/exit`
             assert not state.next
+
+
+# ---------------------------------------------------------------------------
+# CLI behaviour tests
+# ---------------------------------------------------------------------------
+
+class TestAdminCLI:
+    def test_admin_cli_handles_no_pending_reservations(self):
+        """main() exits cleanly with code 0 when there are no pending reservations."""
+        from scripts.admin_review import main
+
+        with patch("scripts.admin_review.get_pending_reservations", return_value=[]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 0
+
+    def test_admin_cli_invalid_input_reprompts(self):
+        """Invalid inputs for reservation selection and approve/reject must not crash."""
+        from scripts.admin_review import select_reservation, get_admin_decision
+
+        reservations = [
+            {
+                "id": 1,
+                "name": "Test",
+                "surname": "User",
+                "car_number": "XYZ-0001",
+                "parking_id": "parking_001",
+                "start_date": "2026-04-01",
+                "end_date": "2026-04-05",
+                "thread_id": "thread-test-001",
+                "created_at": None,
+            }
+        ]
+
+        # Non-numeric then "q" to quit: should exit 0 without crashing.
+        with patch("builtins.input", side_effect=["not-a-number", "q"]):
+            with pytest.raises(SystemExit) as exc_info:
+                select_reservation(reservations)
+        assert exc_info.value.code == 0
+
+        # Invalid decision char then valid "r": should return "rejected".
+        with patch("builtins.input", side_effect=["x", "r"]):
+            decision = get_admin_decision()
+        assert decision == "rejected"
+
