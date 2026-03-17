@@ -91,6 +91,8 @@ python -m app.rag.ingestion
 streamlit run app/main.py
 ```
 
+> **MCP Server:** The MCP server is launched automatically as a subprocess when a reservation is confirmed. You do not need to start it manually.
+
 **Step 5 — Run the admin console (when a reservation awaits approval):**
 ```bash
 python scripts/admin_review.py
@@ -133,6 +135,13 @@ When using Docker Compose, PYTHONPATH is set automatically.
 - `DATABASE_URL`: SQLAlchemy URL (default sqlite file)
 - `ENVIRONMENT`: Environment name (development/production)
 - `LOG_LEVEL`: Logging verbosity (e.g., INFO, DEBUG)
+- `MCP_API_KEY`: API key used by the MCP server/client reservation tools
+- `RESERVATIONS_FILE_PATH`: Output file path for confirmed reservation entries (default `data/reservations.txt`)
+
+```env
+MCP_API_KEY=your_mcp_api_key_here
+RESERVATIONS_FILE_PATH=data/reservations.txt
+```
 
 ## Project Structure
 ```
@@ -140,13 +149,20 @@ parking-chatbot/
 ├── app/
 │   ├── main.py
 │   ├── chatbot/
+│   ├── mcp_client/
 │   ├── rag/
 │   ├── database/
 │   ├── guardrails/
 │   └── evaluation/
+├── mcp_server/
+│   ├── __init__.py
+│   ├── server.py
+│   ├── file_writer.py
+│   └── security.py
 ├── data/
 │   ├── static/
-│   └── dynamic/
+│   ├── dynamic/
+│   └── reservations.example.txt
 ├── docs/
 │   └── SOLUTION.md
 ├── scripts/
@@ -225,5 +241,5 @@ What it does:
 |---|---|---|
 | 1 | RAG Chatbot + Guardrails + Evaluation | ✅ Complete |
 | 2 | Human-in-the-Loop Agent | ✅ Complete |
-| 3 | MCP Server | 🔄 Planned |
+| 3 | MCP Server | ✅ Complete |
 | 4 | Full Orchestration | 🔄 Planned |

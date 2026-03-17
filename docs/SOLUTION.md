@@ -13,6 +13,7 @@ Current end-to-end capabilities:
 - Information retrieval over static parking knowledge with dynamic SQL enrichment for operational values.
 - Multi-turn reservation field collection with structured extraction and explicit user confirmation.
 - Human approval workflow using graph pause/resume semantics and an admin CLI review loop.
+- MCP server writes confirmed reservations to file through a tool-based boundary.
 - Layered guardrails for PII and abuse patterns with deterministic and model-based checks.
 - Quality evaluation with RAGAS metrics, benchmark reporting, and latency tracking.
 
@@ -22,7 +23,7 @@ Roadmap status:
 | --- | --- | --- |
 | Stage 1 | RAG chatbot, guardrails, evaluation foundation | Complete |
 | Stage 2 | HITL reservation approval, checkpointer persistence, admin review flow | Complete |
-| Stage 3 | Safety/observability hardening, telemetry, failure-mode controls | Planned |
+| Stage 3 | MCP server integration for reservation file writing and tool transport | Complete |
 | Stage 4 | Evaluation optimization and iterative quality tuning | Planned |
 
 # 2. Technology Stack
@@ -36,6 +37,7 @@ Roadmap status:
 | SQL Database | SQLite via SQLAlchemy ORM | sqlalchemy>=2.0.0 | Dynamic operational data, reservation persistence, status transitions |
 | Embeddings | OpenAI text-embedding-3-small | openai>=1.30.0 | Dense vector generation for retrieval |
 | Guardrails | Microsoft Presidio + regex + LLM guardrail chain | presidio-analyzer>=2.2.0, presidio-anonymizer>=2.2.0 | PII/system-abuse filtering with layered security checks |
+| MCP Server | Python mcp library | mcp>=1.0.0 | Exposes file-writing tools to LangGraph agent |
 | Admin Operations | Admin CLI (`scripts/admin_review.py`) | Python script in repository | Lists pending reservations, validates paused threads, resumes graph with admin decision |
 | Evaluation | RAGAS + Hugging Face Datasets | ragas>=0.1.0 | Faithfulness and retrieval quality measurement |
 | UI | Streamlit | streamlit>=1.35.0 | Interactive chat interface and system status display |
@@ -86,9 +88,17 @@ Roadmap status:
                                   +------------------------------+
                                   | LangGraph resumes same thread|
                                   +------------------------------+
+
+record_reservation_node
+         |
+         v
++------------------------------+      +------------------------------+      +---------------------+
+| MCP Client                   | ---> | MCP Server                   | ---> | reservations.txt    |
+| app/mcp_client/tools.py      |      | python -m mcp_server.server  |      | file append entries |
++------------------------------+      +------------------------------+      +---------------------+
 ```
 
-Each user turn enters the LangGraph runtime through Streamlit. The graph performs guardrail checks, intent routing, and either informational answer generation or reservation handling. During approval waiting points, `interrupt()` pauses execution and serializes full state through `SqliteSaver` into `checkpoints.db`; the admin CLI later resumes the same thread with `Command(resume=...)`, allowing status-finalization nodes to complete the flow.
+Each user turn enters the LangGraph runtime through Streamlit. The graph performs guardrail checks, intent routing, and either informational answer generation or reservation handling. During approval waiting points, `interrupt()` pauses execution and serializes full state through `SqliteSaver` into `checkpoints.db`; the admin CLI later resumes the same thread with `Command(resume=...)`, allowing status-finalization nodes to complete the flow. On approval, `record_reservation_node` updates DB status and then calls the MCP client, which starts the MCP server subprocess and writes the normalized reservation line to the reservations file.
 
 # 4. LangGraph Decision Graph
 
@@ -106,7 +116,7 @@ guardrail_node
                                                                                                                   |-- [awaiting_admin = false] ------> response_node
                                                                                                                   '-- [awaiting_admin = true] -------> submit_to_admin_node [interrupt]
                                                                                                                                                          |
-                                                                                                                                                         '-- [admin_decision = approved] --> record_reservation_node --> response_node
+                                                                                                                                                         '-- [admin_decision = approved] --> record_reservation_node [DB confirm + MCP write to reservations.txt] --> response_node
                                                                                                                                                          '-- [admin_decision = rejected] --> notify_rejection_node --> response_node
                                                                                                                                                                                              |
                                                                                                                                                                                              v
@@ -120,7 +130,7 @@ Node descriptions:
 - rag_node: Produces grounded informational answers using retrieval plus dynamic SQL enrichment.
 - reservation_node: Collects reservation fields one step at a time, handles user confirmation, and marks the flow as awaiting admin when ready.
 - submit_to_admin_node: Persists pending reservation data (idempotently) and pauses execution via `interrupt()` until an admin decision is provided.
-- record_reservation_node: On admin approval, updates reservation status to confirmed and prepares final confirmation messaging.
+- record_reservation_node: On admin approval, updates reservation status to confirmed, loads canonical reservation data from DB, calls MCP file-write tooling, and prepares final confirmation messaging.
 - notify_rejection_node: On admin rejection, updates reservation status to rejected and prepares rejection messaging.
 - unknown_node: Returns a fallback message that redirects the conversation to supported parking topics.
 - response_node: Generates final user-facing output and appends turn messages to chat history.
@@ -240,7 +250,10 @@ The reservation flow is stateful and multi-turn:
 8. `submit_to_admin_node` issues `interrupt(payload)`, which pauses graph execution and returns control to the caller while preserving full graph state in `checkpoints.db`.
 9. An administrator reviews pending items in `scripts/admin_review.py`, selects approve (`a`) or reject (`r`), and resumes the same thread with `Command(resume=decision)`.
 10. On resume, `record_reservation_node` sets status to `confirmed` for approvals, or `notify_rejection_node` sets status to `rejected` for rejections.
-11. `response_node` produces the final user-facing outcome and updates message history consistently for both outcomes.
+11. For approvals, `record_reservation_node` reads canonical reservation data by `thread_id` from SQL and validates required fields before any MCP call.
+12. `write_reservation_via_mcp()` invokes the MCP server write tool, which validates input and appends the formatted line to `reservations.txt`.
+13. If MCP write fails, confirmation still stands because DB status is already authoritative; the user receives a confirmation message with a non-critical file-recording note.
+14. `response_node` produces the final user-facing outcome and updates message history consistently for both outcomes.
 
 State continuity is governed by `is_reservation_in_progress`, which checks whether `reservation_data` exists and is not finalized. This flag forces routing to reservation handling, preserves user progress across turns, and ensures the flow remains deterministic through the approval handoff.
 
@@ -293,7 +306,38 @@ The admin CLI (`scripts/admin_review.py`) performs a strict resume workflow:
 
 This state check prevents accidental resume calls against already completed threads.
 
-# 9. Evaluation Framework
+# 9. MCP Server Design
+
+## 9.1 Why MCP Protocol Is Used
+
+The file write path is intentionally separated from graph business logic by using MCP tools instead of direct file I/O in node code. This protocol boundary improves encapsulation, allows strict authentication/validation at the server edge, and keeps the graph node focused on workflow state rather than storage mechanics.
+
+## 9.2 Exposed MCP Tools
+
+The MCP server exposes three tools:
+- `write_parking_reservation`: Authenticated write of a confirmed reservation entry.
+- `read_parking_reservations`: Authenticated read of current file entries.
+- `get_reservations_file_stats`: Authenticated file metadata and line-count reporting.
+
+## 9.3 Security and Concurrency Model
+
+Security and input controls are enforced server-side:
+- API-key style authentication using an `api_key` field (equivalent to an `X-API-Key` guard in API deployments).
+- Timing-safe key verification via `hmac.compare_digest`.
+- Input validation for names, car number, date formats, and date ordering.
+- Thread-safe file appends with `threading.Lock` to prevent concurrent write interleaving.
+
+## 9.4 Client Transport and Runtime Behavior
+
+LangChain connects to the MCP server via stdio transport (`stdio_client` + `ClientSession`). The MCP subprocess command uses `sys.executable` so the same Python interpreter/environment is used as the caller, avoiding virtual-environment mismatch. The sync wrapper uses asyncio loop detection so calls are safe from both synchronous code paths and already-running async contexts.
+
+## 9.5 Reservation File Entry Format
+
+Each confirmed entry is stored as one line:
+
+`Name Surname | Car Number | Start Date to End Date | Approval Time`
+
+# 10. Evaluation Framework
 
 ## 9.1 RAGAS Metrics
 
@@ -332,7 +376,7 @@ Latency is captured at two levels:
 
 Average latency is computed across all evaluated questions to provide a stable runtime signal that can be tracked over repeated benchmark runs.
 
-# 10. Testing Strategy
+# 11. Testing Strategy
 
 Test coverage is split into unit-focused and functional graph-focused suites.
 
@@ -346,13 +390,16 @@ Current test inventory:
 - tests/test_checkpointer.py: 6 tests for SqliteSaver wiring, thread isolation, persistence across invocations, and DB helper behavior.
 - tests/test_hitl.py: 11 tests for submit interrupt payload, approval/rejection status nodes, routing, interrupted-state detection, and full approved/rejected HITL flows.
 - tests/test_admin_cli.py: 7 tests for pending-reservation filtering, status update decisions, interrupted-state guard checks, CLI empty-list handling, and input validation.
+- tests/test_mcp_server.py: 12 tests for API-key verification, input validation, reservation append semantics, file stats, concurrency safety, and tool listing.
+- tests/test_mcp_client.py: 9 tests for server process parameters, call success/failure handling, timestamp behavior, LangChain tool wrapper metadata, and record-node MCP invocation behavior.
 
-Total test count: 63 tests.
+Total test count: 84 tests.
 
 Mocking strategy:
 - OpenAI and Weaviate dependencies are mocked in unit and functional tests to avoid network cost, flakiness, and nondeterministic model variance.
 - Real SQLite is used selectively where persistence semantics must be validated, especially reservation save behavior and status transitions.
 - HITL interrupt behavior is tested with controlled interruption/resume conditions: tests assert `interrupt()` is invoked at submit time, verify paused-state detection through `get_state().next`, and exercise both resume branches deterministically.
+- MCP tests use an autouse `temp_reservations_file` fixture to force `RESERVATIONS_FILE_PATH` into per-test temporary directories and patch module-level path constants, ensuring tests never write to real runtime files.
 
 Testing layers:
 - Unit tests validate focused logic in isolation, such as classification parsing, report formatting, guardrail functions, DB helpers, and CLI decision handling.
@@ -361,7 +408,7 @@ Testing layers:
 Evaluation smoke testing:
 - tests/test_evaluation.py serves as a smoke layer for the evaluation pipeline interfaces and artifact generation contract.
 
-# 11. Setup and Running
+# 12. Setup and Running
 
 Prerequisites:
 - Python 3.11+ runtime and virtual environment.
@@ -375,6 +422,18 @@ Environment setup:
 3. Create `.env` from `.env.example` and configure required variables.
 4. Download spaCy model `en_core_web_lg` for Presidio NLP support.
 5. Ensure repository root is available on Python path (handled by `.env` defaults in this project).
+
+Environment variables reference:
+
+| Variable | Purpose | Example |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | LLM and embedding API authentication | `sk-...` |
+| `WEAVIATE_URL` | Weaviate endpoint | `http://localhost:8080` |
+| `WEAVIATE_API_KEY` | Optional key for secured Weaviate deployments | `` |
+| `DATABASE_URL` | SQLAlchemy database URL | `sqlite:///./parking.db` |
+| `CHECKPOINT_DB_PATH` | LangGraph checkpoint SQLite file path | `checkpoints.db` |
+| `MCP_API_KEY` | MCP server authentication key | `your_mcp_api_key_here` |
+| `RESERVATIONS_FILE_PATH` | Target file for confirmed reservation entries | `data/reservations.txt` |
 
 Full local runtime sequence:
 1. Start Weaviate:
@@ -408,3 +467,4 @@ Generated evaluation artifacts:
 Operational notes:
 - The chatbot process and admin CLI must share the same `checkpoints.db` and `parking.db` files.
 - Re-run ingestion after static data changes to keep vector retrieval aligned with `data/static/parking_info.json`.
+- `reservations.txt` is auto-created on first confirmed approval write; see `data/reservations.example.txt` for the entry format reference.
