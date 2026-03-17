@@ -309,7 +309,7 @@ def submit_to_admin_node(state: ChatState, config: RunnableConfig) -> ChatState:
 
 def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatState:
     """Update reservation status to 'confirmed' after admin approval."""
-    from app.database.sql_client import update_reservation_status
+    from app.database.sql_client import update_reservation_status, get_reservation_by_thread_id
 
     thread_id = config["configurable"]["thread_id"]
     result = update_reservation_status(thread_id, "confirmed")
@@ -322,17 +322,33 @@ def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatSta
         )
         return {**state, "response": response}
 
-    collected = state.get("reservation_data", {})
+    reservation = get_reservation_by_thread_id(thread_id)
+    required_fields = ["name", "surname", "car_number", "parking_id", "start_date", "end_date"]
+    missing_fields = [field for field in required_fields if not reservation or not reservation.get(field)]
+
+    if missing_fields:
+        logger.error(
+            "Canonical reservation data missing for thread_id=%s. Missing: %s",
+            thread_id,
+            ", ".join(missing_fields),
+        )
+        response = (
+            "Your reservation is confirmed, but we encountered an internal data issue while finalizing "
+            "file recording. Please contact the administrator with your booking reference: "
+            f"{thread_id[:8]}"
+        )
+        return {**state, "reservation_data": {}, "response": response}
+
     response = "Your reservation has been confirmed."
 
     try:
         mcp_result = write_reservation_via_mcp(
-            name=collected.get("name", ""),
-            surname=collected.get("surname", ""),
-            car_number=collected.get("car_number", ""),
-            parking_id=collected.get("parking_id", ""),
-            start_date=collected.get("start_date", ""),
-            end_date=collected.get("end_date", ""),
+            name=str(reservation["name"]),
+            surname=str(reservation["surname"]),
+            car_number=str(reservation["car_number"]),
+            parking_id=str(reservation["parking_id"]),
+            start_date=str(reservation["start_date"]),
+            end_date=str(reservation["end_date"]),
             approval_time=None,
         )
         logger.info("MCP write result for thread_id=%s: %s", thread_id, mcp_result)

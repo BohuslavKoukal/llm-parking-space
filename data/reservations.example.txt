@@ -1,0 +1,7 @@
+# This file shows the format of confirmed reservation entries
+# Actual reservations.txt is not tracked in git (see .gitignore)
+#
+# Format: Name Surname | Car Number | Start Date to End Date | Approval Time
+#
+# Example:
+John Smith | ABC-1234 | 2026-04-01 to 2026-04-05 | 2026-03-17T10:00:00

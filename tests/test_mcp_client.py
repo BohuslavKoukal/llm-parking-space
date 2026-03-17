@@ -1,4 +1,5 @@
 import importlib
+import sys
 from types import SimpleNamespace
 from datetime import datetime
 from typing import cast
@@ -53,7 +54,7 @@ def test_get_mcp_server_params_returns_correct_command(monkeypatch):
     mcp_tools = importlib.reload(mcp_tools)
     params = mcp_tools.get_mcp_server_params()
 
-    assert params.command == "python"
+    assert params.command == sys.executable
     assert "-m" in params.args
     assert "mcp_server.server" in params.args
 
@@ -218,6 +219,17 @@ def test_record_reservation_node_calls_mcp():
 
     with (
         patch("app.database.sql_client.update_reservation_status", return_value=True),
+        patch(
+            "app.database.sql_client.get_reservation_by_thread_id",
+            return_value={
+                "name": "John",
+                "surname": "Doe",
+                "car_number": "CAR-123",
+                "parking_id": "parking_001",
+                "start_date": "2026-04-01",
+                "end_date": "2026-04-03",
+            },
+        ),
         patch("app.chatbot.graph.write_reservation_via_mcp", return_value="Reservation written successfully: ok") as mock_mcp,
     ):
         result = record_reservation_node(state, config)
@@ -232,6 +244,17 @@ def test_record_reservation_node_succeeds_even_if_mcp_fails():
 
     with (
         patch("app.database.sql_client.update_reservation_status", return_value=True),
+        patch(
+            "app.database.sql_client.get_reservation_by_thread_id",
+            return_value={
+                "name": "John",
+                "surname": "Doe",
+                "car_number": "CAR-123",
+                "parking_id": "parking_001",
+                "start_date": "2026-04-01",
+                "end_date": "2026-04-03",
+            },
+        ),
         patch("app.chatbot.graph.write_reservation_via_mcp", side_effect=RuntimeError("mcp down")),
     ):
         result = record_reservation_node(state, config)
