@@ -319,10 +319,10 @@ def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatSta
             "Your reservation was approved but we encountered an error confirming it. "
             f"Please contact the administrator with your booking reference: {thread_id[:8]}"
         )
-    else:
-        logger.info(f"Reservation confirmed for thread: {thread_id[:8]}")
-        response = "Your reservation has been confirmed."
+        return {**state, "response": response}
 
+    logger.info(f"Reservation confirmed for thread: {thread_id[:8]}")
+    response = "Your reservation has been confirmed."
     return {**state, "reservation_data": {}, "response": response}
 
 
