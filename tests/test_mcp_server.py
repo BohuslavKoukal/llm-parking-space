@@ -3,6 +3,16 @@ import importlib
 import threading
 from pathlib import Path
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def temp_reservations_file(monkeypatch, tmp_path):
+    temp_file = tmp_path / "test_reservations.txt"
+    monkeypatch.setenv("RESERVATIONS_FILE_PATH", str(temp_file))
+    monkeypatch.setattr("mcp_server.file_writer.RESERVATIONS_FILE_PATH", str(temp_file))
+    return temp_file
+
 
 def _load_security_module(monkeypatch, api_key: str):
     monkeypatch.setenv("MCP_API_KEY", api_key)
@@ -116,9 +126,6 @@ def test_write_reservation_format(monkeypatch, tmp_path):
 def test_read_reservations_returns_empty_list_if_no_file(monkeypatch, tmp_path):
     reservations_file = tmp_path / "missing" / "reservations.txt"
     file_writer = _load_file_writer_module(monkeypatch, reservations_file)
-
-    if reservations_file.exists():
-        reservations_file.unlink()
 
     assert file_writer.read_reservations() == []
 
