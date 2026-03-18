@@ -214,6 +214,27 @@ Before running evaluation, ensure:
 - Weaviate is running and reachable
 - Parking data has already been ingested into Weaviate
 
+## Load Testing
+
+Run the load test script to measure component latency:
+
+```bash
+python scripts/load_test.py
+```
+
+Prerequisites:
+- Weaviate must be running: docker compose up -d weaviate
+- Data must be ingested: python -m app.rag.ingestion
+- MCP_API_KEY must be set in .env
+
+Control number of requests:
+
+```bash
+LOAD_TEST_N_REQUESTS=5 python scripts/load_test.py
+```
+
+Reports are saved to reports/load_test_report_{timestamp}.md
+
 ## Admin Review Console
 
 The admin CLI allows an administrator to approve or reject pending parking reservations.
