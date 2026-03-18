@@ -19,6 +19,7 @@ load_dotenv()
 
 
 def _parse_local_endpoint(weaviate_url: str) -> tuple[str, int]:
+    """Parse and validate local Weaviate URL into host and port values."""
     parsed = urlparse(weaviate_url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise RuntimeError(

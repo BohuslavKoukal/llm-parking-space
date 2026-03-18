@@ -16,6 +16,7 @@ _CAR_PATTERN = re.compile(r"^[A-Za-z0-9\-]+$")
 
 
 def verify_api_key(provided_key: str) -> bool:
+    """Validate provided MCP API key using timing-safe comparison."""
     provided = provided_key or ""
     is_valid = hmac.compare_digest(provided, MCP_API_KEY)
     if not is_valid:
@@ -30,6 +31,7 @@ def validate_reservation_input(
     start_date: str,
     end_date: str,
 ) -> tuple[bool, str]:
+    """Validate reservation payload fields and return (is_valid, reason)."""
     if not name or not name.strip():
         return False, "Name must be non-empty"
     if len(name.strip()) > 100:

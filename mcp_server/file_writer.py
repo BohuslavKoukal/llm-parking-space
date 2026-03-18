@@ -26,6 +26,7 @@ def write_reservation(
     end_date: str,
     approval_time: str,
 ) -> str:
+    """Append one confirmed reservation line to the configured reservations file."""
     formatted_line = (
         f"{name} {surname} | {car_number} | {start_date} to {end_date} | {approval_time}"
     )
@@ -48,6 +49,7 @@ def write_reservation(
 
 
 def read_reservations() -> list[str]:
+    """Return non-empty reservation lines from the configured file."""
     file_path = Path(RESERVATIONS_FILE_PATH)
     if not file_path.exists():
         return []
@@ -57,6 +59,7 @@ def read_reservations() -> list[str]:
 
 
 def get_file_stats() -> dict:
+    """Return existence and basic metadata for the reservations file."""
     file_path = Path(RESERVATIONS_FILE_PATH)
     exists = file_path.exists()
 
