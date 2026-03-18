@@ -1,3 +1,12 @@
+"""Streamlit entrypoint for the parking assistant UI.
+
+Structure:
+1. Load environment and initialize backend services (DB and Weaviate health).
+2. Initialize Streamlit session state for chat/thread/processing flags.
+3. Render sidebar status and main chat transcript.
+4. Invoke LangGraph for each new user message with thread-scoped config.
+"""
+
 import sys
 import os
 import uuid
@@ -43,11 +52,33 @@ def initialize_services():
 
 weaviate_ok = initialize_services()
 
-# Initialize thread_id and awaiting_admin before the sidebar so they are always available when rendered
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = str(uuid.uuid4())
-if "awaiting_admin" not in st.session_state:
-    st.session_state.awaiting_admin = False
+
+def initialize_session_state() -> None:
+    """Initialize all Streamlit session keys in one place.
+
+    Fields:
+    - thread_id: stable conversation identifier for LangGraph checkpointing
+    - awaiting_admin: whether current reservation is paused for admin review
+    - messages: LangChain chat history shown in the UI
+    - reservation_data: in-progress reservation fields across turns
+    - is_processing: lock flag preventing concurrent/double submission
+    - last_processed_input: audit/debug helper for most recent submitted input
+    """
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = str(uuid.uuid4())
+    if "awaiting_admin" not in st.session_state:
+        st.session_state.awaiting_admin = False
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "reservation_data" not in st.session_state:
+        st.session_state.reservation_data = {}
+    if "is_processing" not in st.session_state:
+        st.session_state.is_processing = False
+    if "last_processed_input" not in st.session_state:
+        st.session_state.last_processed_input = None
+
+
+initialize_session_state()
 
 
 # -- Sidebar ------------------------------------------------------------------
@@ -74,17 +105,6 @@ with st.sidebar:
         st.rerun()
 
 
-# ── Session state ─────────────────────────────────────────────────────────────
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "reservation_data" not in st.session_state:
-    st.session_state.reservation_data = {}
-if "is_processing" not in st.session_state:
-    st.session_state.is_processing = False
-if "last_processed_input" not in st.session_state:
-    st.session_state.last_processed_input = None
-
-
 # -- Chat UI ------------------------------------------------------------------
 st.title("🅿️ Parking Assistant")
 st.markdown("Ask me about parking spaces, prices, availability, or make a reservation!")
@@ -109,7 +129,7 @@ user_input = st.chat_input(
 )
 
 if user_input and not st.session_state.is_processing:
-    # Set lock immediately before anything else
+    # Processing lock prevents duplicate graph invocations from rapid UI reruns.
     st.session_state.is_processing = True
     st.session_state.last_processed_input = user_input
 
@@ -149,11 +169,14 @@ if user_input and not st.session_state.is_processing:
                     st.session_state.awaiting_admin = bool(state_snapshot.next)
 
             except Exception as e:
-                logger.error(f"Graph invocation error: {e}")
-                response = "I encountered an error. Please try again."
+                logger.error("Graph invocation error: %s", e)
+                response = (
+                    "Something went wrong while processing your request. "
+                    "Please try again in a moment."
+                )
 
             finally:
-                # Always release lock
+                # Always release lock so future messages are not blocked after an error.
                 st.session_state.is_processing = False
 
             st.markdown(response)

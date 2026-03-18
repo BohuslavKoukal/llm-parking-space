@@ -1,5 +1,12 @@
-import os
+"""Chain builders for the parking assistant.
+
+This module centralizes LangChain pipeline construction so graph nodes can
+re-use consistent prompts and model settings for intent classification,
+guardrails, reservation assistance, and RAG responses.
+"""
+
 import logging
+import os
 from pydantic import SecretStr
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
@@ -15,7 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 def get_llm(temperature: float = 0.0) -> ChatOpenAI:
-    """Return a ChatOpenAI instance using GPT-4o."""
+    """Return a GPT-4o chat model configured for this project.
+
+    Temperature guidance:
+    - 0.0 for deterministic tasks (classification/guardrails/extraction)
+    - 0.3 for more conversational reservation assistant responses
+    """
     api_key = os.getenv("OPENAI_API_KEY")
     return ChatOpenAI(
         model="gpt-4o",
@@ -26,11 +38,10 @@ def get_llm(temperature: float = 0.0) -> ChatOpenAI:
 
 def build_rag_chain(retriever):
     """
-    Build and return a RAG chain that:
-    1. Retrieves relevant documents from Weaviate using the retriever
-    2. Formats context from retrieved docs
-    3. Passes context + question to GPT-4o via RAG_PROMPT
-    4. Returns a string response
+    Build a RAG chain using GPT-4o with temperature 0.0 and RAG_PROMPT.
+
+    Prompt template: RAG_PROMPT from app.chatbot.prompts.
+    Returns: string answer generated from retrieved context + user question.
     """
     def format_docs(docs):
         return "\n\n".join(doc.page_content for doc in docs)
@@ -48,8 +59,10 @@ def build_rag_chain(retriever):
 
 def build_intent_chain():
     """
-    Build and return a chain that classifies user intent.
-    Returns one of: "info", "reservation", "unknown"
+    Build an intent classification chain using GPT-4o (temperature 0.0).
+
+    Prompt template: INTENT_CLASSIFICATION_PROMPT.
+    Returns: plain text category "info", "reservation", or "unknown".
     """
     return (
         INTENT_CLASSIFICATION_PROMPT
@@ -60,8 +73,10 @@ def build_intent_chain():
 
 def build_reservation_chain():
     """
-    Build and return a chain that handles reservation data collection.
-    Guides the user through providing all required reservation fields.
+    Build a reservation assistant chain using GPT-4o (temperature 0.3).
+
+    Prompt template: RESERVATION_PROMPT.
+    Returns: string response guiding field collection or confirmation.
     """
     return (
         RESERVATION_PROMPT
@@ -72,8 +87,10 @@ def build_reservation_chain():
 
 def build_guardrail_chain():
     """
-    Build and return a chain that checks if user input is safe.
-    Returns "safe" or "blocked".
+    Build a guardrail classifier chain using GPT-4o (temperature 0.0).
+
+    Prompt template: GUARDRAIL_PROMPT.
+    Returns: string label "safe" or "blocked".
     """
     return (
         GUARDRAIL_PROMPT

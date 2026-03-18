@@ -1,5 +1,14 @@
+"""Prompt templates for classification, RAG answering, reservation flow, and guardrails.
+
+These prompts define assistant behavior centrally so graph/chains logic stays
+thin and consistent across nodes.
+"""
+
 from langchain_core.prompts import ChatPromptTemplate
 
+# Core behavioral contract for the assistant.
+# Rationale: keeps the model constrained to supported capabilities and privacy boundaries.
+# Limitation: model can still occasionally over-generate; graph-level routing/guardrails remain authoritative.
 SYSTEM_PROMPT = """You are a helpful parking assistant for a network of 5 parking spaces.
 You help users find information about parking locations, prices, working hours,
 availability, and assist them with making reservations.
@@ -10,9 +19,14 @@ Rules you must follow:
 - Only provide information about the 5 parking spaces you manage
 - If you don't know something, say so honestly
 - For reservations, collect all required fields: name, surname, car number, start date, end date
+- Reservation requests are submitted for administrator review before final confirmation
+- Do not claim a reservation is approved unless the system indicates admin approval
 - Always be polite and concise
 """
 
+# Intent router prompt.
+# Rationale: force one-token categorical output for deterministic graph routing.
+# Limitation: ambiguous user phrasing may still require fallback normalization in code.
 INTENT_CLASSIFICATION_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """Classify the user's intent into exactly one of these categories:
 - "info": user is asking for information (prices, hours, location, availability, features)
@@ -23,6 +37,9 @@ Respond with ONLY the category word, nothing else."""),
     ("human", "{user_input}")
 ])
 
+# RAG answer prompt.
+# Rationale: enforce complete parking-list responses using dynamic metadata from SQL.
+# Limitation: if retrieval context lacks a detail, prompt instructs transparency instead of fabrication.
 RAG_PROMPT = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT + """
 Use the following retrieved context to answer the user's question.
@@ -42,6 +59,9 @@ Retrieved context:
     ("human", "{question}")
 ])
 
+# Reservation dialogue prompt.
+# Rationale: strict field-by-field progression keeps the state machine predictable.
+# Limitation: nuanced natural-language confirmations still rely on code-level keyword parsing.
 RESERVATION_PROMPT = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT + """
 You are collecting reservation details from the user step by step.
@@ -64,6 +84,9 @@ to confirm with yes/no before submitting.
     ("human", "{user_input}")
 ])
 
+# Security classifier prompt.
+# Rationale: second-layer LLM filter catches attacks beyond regex/Presidio patterns.
+# Limitation: model judgment is probabilistic, so it is used alongside deterministic checks.
 GUARDRAIL_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """You are a security filter. Analyze the user message and determine
 if it contains any of the following:
