@@ -14,6 +14,7 @@ METRIC_THRESHOLDS = {
 
 
 def _metric_status(metric: str, score: float) -> str:
+    """Return status label for a metric based on configured score thresholds."""
     threshold = METRIC_THRESHOLDS[metric]
     if metric == "faithfulness":
         return "passed" if score >= threshold else "failed"
@@ -21,6 +22,7 @@ def _metric_status(metric: str, score: float) -> str:
 
 
 def _escape_cell(text: str) -> str:
+    """Escape markdown table control characters in cell values."""
     return text.replace("|", "\\|").replace("\n", " ").strip()
 
 

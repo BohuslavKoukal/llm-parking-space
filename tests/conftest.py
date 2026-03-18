@@ -1,5 +1,6 @@
 import uuid
 import pytest
+from sqlalchemy.orm import close_all_sessions
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from app.chatbot.graph import ChatState, get_thread_config
@@ -165,12 +166,10 @@ def test_db(monkeypatch):
     try:
         yield
     finally:
-        close_all = getattr(sql_client.SessionLocal, "close_all", None)
-        if callable(close_all):
-            try:
-                close_all()
-            except Exception:
-                pass
+        try:
+            close_all_sessions()
+        except Exception:
+            pass
 
         bound_engine = getattr(sql_client.SessionLocal, "bind", None)
         if bound_engine is not None:

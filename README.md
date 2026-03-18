@@ -1,266 +1,160 @@
-# Parking Chatbot (RAG)
+# Parking Chatbot: RAG + HITL + MCP
 
-## Project Overview
-Parking Chatbot is a production-ready Python scaffold for a Retrieval-Augmented Generation (RAG) assistant focused on parking information and reservation support. It combines LangChain and LangGraph orchestration with OpenAI GPT-4o, Weaviate vector search, SQLAlchemy persistence, and Presidio guardrails.
+A production-ready parking assistant that combines RAG retrieval, stateful reservation orchestration, admin approval via LangGraph interrupt and resume, secure MCP-based reservation recording, layered guardrails, evaluation, and load testing.
 
-## Architecture Diagram (ASCII)
+![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
+![LangChain](https://img.shields.io/badge/LangChain-enabled-green)
+![LangGraph](https://img.shields.io/badge/LangGraph-stateful-orange)
+
+Detailed technical documentation: docs/SOLUTION.md
+
+## Quick Start
+
+1. Install dependencies: pip install -r requirements.txt
+2. Copy environment file: copy .env.example .env (Windows) or cp .env.example .env (macOS/Linux)
+3. Start Weaviate: docker compose up -d weaviate
+4. Initialize DB and ingest data:
+   - python -c "from app.database.sql_client import init_db; init_db()"
+   - python -m app.rag.ingestion
+5. Start chatbot: streamlit run app/main.py
+
+For complete setup, environment variable details, architecture, and operations guidance, see docs/SOLUTION.md.
+
+## Project Structure
+
+```text
+llm-parking-space/
+├── app/                                # Application package
+│   ├── __init__.py                     # Package marker (if present)
+│   ├── main.py                         # Streamlit UI, state handling, admin decision notification
+│   ├── chatbot/                        # LangGraph orchestration and prompt/chain definitions
+│   │   ├── __init__.py                 # Chatbot package marker
+│   │   ├── chains.py                   # LangChain chain builders (RAG, intent, reservation, guardrails)
+│   │   ├── graph.py                    # LangGraph state graph, interrupt/resume flow, checkpoint wiring
+│   │   └── prompts.py                  # System, routing, extraction, and guardrail prompts
+│   ├── database/                       # SQLAlchemy models and DB helpers
+│   │   ├── __init__.py                 # Database package marker
+│   │   ├── models.py                   # Parking and reservation ORM models
+│   │   └── sql_client.py               # Engine/session lifecycle, reservation CRUD, status updates
+│   ├── evaluation/                     # RAGAS evaluation logic and reporting
+│   │   ├── __init__.py                 # Evaluation package marker
+│   │   ├── ragas_eval.py               # Evaluation pipeline and metric computation
+│   │   └── report.py                   # Markdown and JSON report generation
+│   ├── guardrails/                     # Safety checks and blocking logic
+│   │   ├── __init__.py                 # Guardrails package marker
+│   │   └── filters.py                  # Presidio and regex/LLM guardrail implementation
+│   ├── mcp_client/                     # MCP client boundary used by graph node
+│   │   ├── __init__.py                 # MCP client package marker
+│   │   └── tools.py                    # MCP server process params and write tool invocation
+│   └── rag/                            # RAG indexing and retrieval utilities
+│       ├── __init__.py                 # RAG package marker
+│       ├── embeddings.py               # Embedding model builder
+│       ├── ingestion.py                # Static data ingestion into Weaviate
+│       └── weaviate_client.py          # Weaviate client and retriever helpers
+├── mcp_server/                         # MCP server implementation
+│   ├── __init__.py                     # MCP server package marker
+│   ├── server.py                       # MCP tool server (write/read/stats tools)
+│   ├── file_writer.py                  # Reservation file write/read/stat helpers
+│   └── security.py                     # API-key validation and payload validation
+├── scripts/                            # Operational scripts
+│   ├── admin_review.py                 # Admin console for approve/reject and graph resume
+│   ├── run_evaluation.py               # Evaluation runner script
+│   └── load_test.py                    # Load testing and latency report generation
+├── tests/                              # Full automated test suite
+│   ├── conftest.py                     # Shared fixtures and test DB lifecycle
+│   ├── test_admin_cli.py               # Admin CLI tests
+│   ├── test_chatbot.py                 # Routing and intent tests
+│   ├── test_checkpointer.py            # Checkpointer and state persistence tests
+│   ├── test_evaluation.py              # Evaluation/report tests
+│   ├── test_functional.py              # Functional graph flow tests
+│   ├── test_guardrails.py              # Guardrail tests
+│   ├── test_hitl.py                    # HITL interrupt/resume tests
+│   ├── test_integration.py             # End-to-end integration pipeline tests
+│   ├── test_load_test.py               # Load test utility/report tests
+│   ├── test_mcp_client.py              # MCP client tests
+│   ├── test_mcp_server.py              # MCP server tests
+│   ├── test_notification.py            # Admin decision notification tests
+│   └── test_rag.py / test_rag_db.py    # RAG and SQL-context tests
+├── data/                               # Static and dynamic data files
+│   ├── static/parking_info.json        # Source static parking knowledge
+│   ├── dynamic/seed_data.csv           # Seed dynamic operational values
+│   └── evaluation/eval_questions.json  # Evaluation dataset
+├── docs/                               # Technical documentation and generated diagrams
+│   ├── SOLUTION.md                     # Unified architecture and implementation documentation
+│   └── graph_diagram.png               # Generated graph diagram artifact
+├── reports/                            # Evaluation and load-test outputs
+├── docker-compose.yml                  # Local services orchestration (Weaviate)
+├── Dockerfile                          # Container build recipe
+├── requirements.txt                    # Python dependencies
+├── .env.example                        # Environment template
+└── check_schema.py                     # Local schema check helper
 ```
-+--------------------+        +---------------------+
-| Streamlit UI       | -----> | LangGraph Workflow  |
-| app/main.py        |        | guardrail -> intent |
-+--------------------+        | -> rag/reservation  |
-          |                   +----------+----------+
-          |                              |
-          v                              v
-+--------------------+        +---------------------+
-| Guardrails         |        | RAG Layer           |
-| Presidio + regex   |        | Weaviate retriever  |
-+--------------------+        +---------------------+
-          |                              |
-          +---------------+--------------+
-                          v
-                 +------------------+
-                 | OpenAI GPT-4o    |
-                 +------------------+
-                          |
-                          v
-                 +------------------+
-                 | SQL Database     |
-                 | dynamic config & |
-                 | reservations     |
-                 +------------------+
-```
 
-## Tech Stack
-- Python 3.11
-- Streamlit (chat interface)
-- LangChain + LangGraph
-- OpenAI GPT-4o + OpenAI embeddings
-- Weaviate vector database
-- SQLAlchemy ORM (+ Alembic-ready)
-- Presidio Analyzer/Anonymizer
-- Pytest + GitHub Actions CI
-- Docker + Docker Compose
+## Stage Completion
 
-## Setup Instructions
-### Local
-1. Create and activate a Python 3.11 environment.
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Copy environment variables:
-   ```bash
-   cp .env.example .env
-   ```
-4. (Optional, recommended for Presidio quality):
-   ```bash
-   python -m spacy download en_core_web_lg
-   ```
-5. Run the app:
-   ```bash
-   streamlit run app/main.py
-   ```
+| Stage | Description | Status |
+|-------|-------------|--------|
+| 1 | RAG Chatbot + Guardrails + Evaluation | ✅ Complete |
+| 2 | Human-in-the-Loop Admin Approval | ✅ Complete |
+| 3 | MCP Server for Reservation Recording | ✅ Complete |
+| 4 | Full Orchestration + Load Testing | ✅ Complete |
 
-> **Upgrading from Stage 1?** If you have an existing `parking.db` from a
-> pre-Stage-2 version it may be missing the `thread_id` column on the
-> `reservations` table.  The application auto-migrates the schema on first
-> run — no manual action is required.
+## Running Tests
 
-## Running the Application
+Run full suite:
 
-Run each step in order for a full local setup:
-
-**Step 1 — Start Weaviate:**
 ```bash
-docker compose up -d weaviate
+pytest tests/ -v
 ```
 
-**Step 2 — Initialise the database:**
+Run a specific file:
+
 ```bash
-python -c "from app.database.sql_client import init_db; init_db()"
+pytest tests/test_notification.py -v
 ```
 
-**Step 3 — Ingest parking data into Weaviate:**
+Run only integration tests:
+
 ```bash
-python -m app.rag.ingestion
+pytest tests/test_integration.py -v
 ```
 
-**Step 4 — Start the chatbot:**
-```bash
-streamlit run app/main.py
-```
+Current expected count: 100+ tests (currently 106 collected).
 
-> **MCP Server:** The MCP server is launched automatically as a subprocess when a reservation is confirmed. You do not need to start it manually.
+## Key Design Decisions
 
-**Step 5 — Run the admin console (when a reservation awaits approval):**
+- LangGraph interrupt for HITL:
+  - interrupt() allows reservation submission to pause at submit_to_admin and resume on the same thread with Command(resume=...).
+  - This gives deterministic, auditable approval control without losing conversation state.
+
+- Weaviate plus SQL split:
+  - Weaviate handles semantic retrieval over descriptive parking content.
+  - SQLite handles transactional and dynamic data (reservation records, status transitions, live values).
+
+- Presidio-first guardrails:
+  - Presidio and regex checks provide low-latency deterministic safety filtering.
+  - LLM guardrails run as a second semantic safety layer for subtle abuse patterns.
+
+- MCP Python library over FastAPI:
+  - MCP provides a tool-oriented protocol boundary aligned with agent workflows.
+  - It keeps file-writing capability isolated behind authenticated tools without coupling graph nodes to direct file I/O.
+
+## Additional Operational Commands
+
+Run admin review console in a separate terminal:
+
 ```bash
 python scripts/admin_review.py
 ```
-> The admin console must be run in a **separate terminal** while the chatbot is running. Both processes share `checkpoints.db` and `parking.db`.
 
-## Important: Python Path Setup
-This project requires the repository root to be on the Python path.
-This is handled automatically if you copy .env.example to .env:
-```bash
-cp .env.example .env
-```
+Run evaluation:
 
-For manual terminal launches on Windows PowerShell:
-```powershell
-$env:PYTHONPATH = "."
-streamlit run app/main.py
-```
-
-For manual terminal launches on Mac/Linux:
-```bash
-export PYTHONPATH=.
-streamlit run app/main.py
-```
-
-When using Docker Compose, PYTHONPATH is set automatically.
-
-### Docker
-1. Create `.env` from `.env.example`.
-2. Start services:
-   ```bash
-   docker compose up --build
-   ```
-3. Open `http://localhost:8501`.
-
-## Environment Variables Reference
-- `OPENAI_API_KEY`: OpenAI API key for GPT-4o and embeddings
-- `WEAVIATE_URL`: Weaviate endpoint (default local: `http://localhost:8080`)
-- `WEAVIATE_API_KEY`: Optional API key for secured Weaviate deployments
-- `DATABASE_URL`: SQLAlchemy URL (default sqlite file)
-- `ENVIRONMENT`: Environment name (development/production)
-- `LOG_LEVEL`: Logging verbosity (e.g., INFO, DEBUG)
-- `MCP_API_KEY`: API key used by the MCP server/client reservation tools
-- `RESERVATIONS_FILE_PATH`: Output file path for confirmed reservation entries (default `data/reservations.txt`)
-
-```env
-MCP_API_KEY=your_mcp_api_key_here
-RESERVATIONS_FILE_PATH=data/reservations.txt
-```
-
-## Project Structure
-```
-parking-chatbot/
-├── app/
-│   ├── main.py
-│   ├── chatbot/
-│   ├── mcp_client/
-│   ├── rag/
-│   ├── database/
-│   ├── guardrails/
-│   └── evaluation/
-├── mcp_server/
-│   ├── __init__.py
-│   ├── server.py
-│   ├── file_writer.py
-│   └── security.py
-├── data/
-│   ├── static/
-│   ├── dynamic/
-│   └── reservations.example.txt
-├── docs/
-│   └── SOLUTION.md
-├── scripts/
-│   ├── admin_review.py
-│   └── run_evaluation.py
-├── tests/
-│   ├── conftest.py
-│   ├── test_rag.py
-│   ├── test_rag_db.py
-│   ├── test_chatbot.py
-│   ├── test_guardrails.py
-│   ├── test_functional.py
-│   ├── test_evaluation.py
-│   ├── test_checkpointer.py
-│   ├── test_hitl.py
-│   └── test_admin_cli.py
-├── .github/workflows/
-├── .env.example
-├── requirements.txt
-├── docker-compose.yml
-├── Dockerfile
-└── README.md
-```
-
-## Running Tests
-```bash
-pytest tests/ -v --tb=short
-```
-
-## Running Evaluation
-Run the standalone evaluation pipeline with:
 ```bash
 python scripts/run_evaluation.py
 ```
 
-The evaluation measures RAG quality using RAGAS metrics:
-- faithfulness
-- answer_relevancy
-- context_recall
-- context_precision
-
-The generated Markdown report is saved in the reports directory as:
-- reports/eval_report_{timestamp}.md
-
-The latest machine-readable results are also saved to:
-- reports/latest_results.json
-
-Before running evaluation, ensure:
-- Weaviate is running and reachable
-- Parking data has already been ingested into Weaviate
-
-## Load Testing
-
-Run the load test script to measure component latency:
+Run load test:
 
 ```bash
 python scripts/load_test.py
 ```
-
-Prerequisites:
-- Weaviate must be running: docker compose up -d weaviate
-- Data must be ingested: python -m app.rag.ingestion
-- MCP_API_KEY must be set in .env
-
-Control number of requests:
-
-```bash
-LOAD_TEST_N_REQUESTS=5 python scripts/load_test.py
-```
-
-Reports are saved to reports/load_test_report_{timestamp}.md
-
-## Admin Review Console
-
-The admin CLI allows an administrator to approve or reject pending parking reservations.
-
-Prerequisites:
-- The chatbot app must be running (`streamlit run app/main.py`)
-- A user must have completed the reservation flow
-
-How to run in a separate terminal:
-```bash
-python scripts/admin_review.py
-```
-
-What it does:
-- Lists all pending reservations waiting for admin approval
-- Allows admin to approve or reject each reservation
-- Resumes the paused LangGraph graph with the admin decision
-- User sees the result on their next message in the chat UI
-
-> **Note:** The admin console and the chatbot share the same `checkpoints.db` and `parking.db` files.
-
-## Stage Completion Status
-
-| Stage | Description | Status |
-|---|---|---|
-| 1 | RAG Chatbot + Guardrails + Evaluation | ✅ Complete |
-| 2 | Human-in-the-Loop Agent | ✅ Complete |
-| 3 | MCP Server | ✅ Complete |
-| 4 | Full Orchestration | 🔄 Planned |

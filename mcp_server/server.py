@@ -20,11 +20,13 @@ app = Server("parking-reservation-server")
 
 
 def _text_response(message: str) -> list[types.TextContent]:
+    """Wrap plain text into MCP TextContent response payload."""
     return [types.TextContent(type="text", text=message)]
 
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
+    """Dispatch MCP tool calls and return formatted text responses."""
     args = arguments or {}
 
     if name == "write_parking_reservation":
@@ -91,6 +93,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
 
 @app.list_tools()
 async def list_tools() -> list[types.Tool]:
+    """Return the MCP tool registry exposed by this server."""
     return [
         types.Tool(
             name="write_parking_reservation",
@@ -177,6 +180,7 @@ async def list_tools() -> list[types.Tool]:
 
 
 async def main() -> None:
+    """Start the MCP stdio server loop."""
     logging.basicConfig(level=logging.INFO)
     logger.info("Starting Parking Reservation MCP Server")
     async with stdio_server() as (read_stream, write_stream):

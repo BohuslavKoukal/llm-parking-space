@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_mcp_server_params() -> StdioServerParameters:
+    """Build stdio server parameters for spawning the local MCP server process."""
     return StdioServerParameters(
         command=sys.executable,
         args=["-m", "mcp_server.server"],
@@ -34,6 +35,7 @@ async def call_write_reservation_tool(
     end_date: str,
     approval_time: str,
 ) -> str:
+    """Call the MCP write tool asynchronously and return its text response."""
     api_key = os.getenv("MCP_API_KEY", "")
     if not api_key:
         logger.error("MCP_API_KEY is not set")
@@ -81,6 +83,7 @@ def write_reservation_via_mcp(
     end_date: str,
     approval_time: Optional[str] = None,
 ) -> str:
+    """Write a confirmed reservation through MCP from sync or async caller contexts."""
     approval_value = approval_time or datetime.now().isoformat()
     safe_name = (name[:1] + "***") if name else "***"
     logger.info("Calling MCP write tool for reservation owner: %s", safe_name)
@@ -137,6 +140,7 @@ def write_reservation_tool(
     end_date: str,
     approval_time: Optional[str] = None,
 ) -> str:
+    """LangChain tool wrapper that writes a confirmed reservation via MCP."""
     return write_reservation_via_mcp(
         name=name,
         surname=surname,
