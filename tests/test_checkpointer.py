@@ -4,6 +4,7 @@ import contextlib
 import uuid
 import pytest
 from unittest.mock import patch, MagicMock
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from app.chatbot.graph import get_thread_config, chatbot_graph, build_graph
 from app.chatbot.graph import ChatState
@@ -60,8 +61,9 @@ def fresh_graph():
     Using ':memory:' ensures each test gets a clean, isolated checkpoint store
     with no risk of a closed-connection error from a shared module-level saver.
     """
-    graph, _ = build_graph(":memory:")
-    return graph
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        graph = build_graph(checkpointer=checkpointer)
+        yield graph
 
 
 # ---------------------------------------------------------------------------

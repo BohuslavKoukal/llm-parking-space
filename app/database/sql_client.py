@@ -23,6 +23,12 @@ def get_engine():
 SessionLocal = sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
 
 
+def reset_db_connection():
+    """Reset SessionLocal to the engine resolved from the current DATABASE_URL."""
+    global SessionLocal
+    SessionLocal = sessionmaker(bind=get_engine(), autocommit=False, autoflush=False)
+
+
 def init_db():
     """
     Create all tables if they do not exist.

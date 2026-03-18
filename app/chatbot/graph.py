@@ -13,7 +13,6 @@ Flow overview:
 import logging
 import os
 import re
-import sqlite3
 from typing import Any, cast, TypedDict
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -678,14 +677,26 @@ def get_thread_config(thread_id: str) -> dict:
     return {"configurable": {"thread_id": thread_id}}
 
 
-def build_graph(conn_string: str | None = None):
-    """Assemble and compile the chatbot LangGraph with SQLite checkpointing."""
-    raw = conn_string if conn_string is not None else os.getenv("CHECKPOINT_DB_PATH", "checkpoints.db")
-    if raw.startswith("sqlite:///"):
-        raw = raw[len("sqlite:///") :]
+def _create_default_checkpointer() -> tuple[SqliteSaver, Any]:
+    """Create the default SqliteSaver checkpointer from env config."""
+    db_path = os.getenv("CHECKPOINT_DB_PATH", "checkpoints.db")
+    if db_path.startswith("sqlite:///"):
+        db_path = db_path[len("sqlite:///") :]
 
-    conn = sqlite3.connect(raw, check_same_thread=False)
-    saver = SqliteSaver(conn)
+    context_manager = SqliteSaver.from_conn_string(db_path)
+    saver = context_manager.__enter__()
+    return saver, context_manager
+
+
+def build_graph(checkpointer: SqliteSaver | None = None):
+    """Assemble and compile the chatbot LangGraph.
+
+    If no checkpointer is provided, a default SQLite-backed checkpointer is
+    created from CHECKPOINT_DB_PATH.
+    """
+    managed_context = None
+    if checkpointer is None:
+        checkpointer, managed_context = _create_default_checkpointer()
 
     graph = StateGraph(ChatState)
 
@@ -741,12 +752,13 @@ def build_graph(conn_string: str | None = None):
     graph.add_edge("unknown_node", "response_node")
     graph.add_edge("response_node", END)
 
-    compiled = graph.compile(checkpointer=saver)
-    setattr(compiled, "_sqlite_conn", conn)
-    return compiled, saver
+    compiled = graph.compile(checkpointer=checkpointer)
+    if managed_context is not None:
+        setattr(compiled, "_checkpointer_context", managed_context)
+    return compiled
 
 
-chatbot_graph, checkpointer = build_graph()
+chatbot_graph = build_graph()
 
 
 def save_graph_diagram(output_path: str = "docs/graph_diagram.png"):

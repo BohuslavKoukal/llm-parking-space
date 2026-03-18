@@ -7,6 +7,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -136,8 +137,9 @@ def _full_graph_input_state() -> ChatState:
 @pytest.fixture
 def fresh_graph():
     """Isolated in-memory graph per test."""
-    graph, _ = build_graph(":memory:")
-    return graph
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        graph = build_graph(checkpointer=checkpointer)
+        yield graph
 
 
 # ---------------------------------------------------------------------------
