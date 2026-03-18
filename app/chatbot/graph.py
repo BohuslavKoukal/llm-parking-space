@@ -437,7 +437,12 @@ def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatSta
                 "Your reservation was approved but we encountered an error confirming it. "
                 f"Please contact the administrator with your booking reference: {thread_id[:8]}"
             )
-            return {**state, "response": response}
+            return {
+                **state,
+                "admin_decision": "approved",
+                "awaiting_admin": False,
+                "response": response,
+            }
 
         reservation = get_reservation_by_thread_id(thread_id)
         required_fields = ["name", "surname", "car_number", "parking_id", "start_date", "end_date"]
@@ -454,9 +459,18 @@ def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatSta
                 "file recording. Please contact the administrator with your booking reference: "
                 f"{thread_id[:8]}"
             )
-            return {**state, "reservation_data": {}, "response": response}
+            return {
+                **state,
+                "admin_decision": "approved",
+                "awaiting_admin": False,
+                "reservation_data": {},
+                "response": response,
+            }
 
-        response = "Your reservation has been confirmed."
+        response = (
+            "✅ Your reservation has been approved and confirmed! "
+            "Your parking space is reserved. We look forward to seeing you."
+        )
         assert reservation is not None
 
         try:
@@ -486,11 +500,19 @@ def record_reservation_node(state: ChatState, config: RunnableConfig) -> ChatSta
             )
 
         logger.info("Reservation confirmed for thread: %s", thread_id[:8])
-        return {**state, "reservation_data": {}, "response": response}
+        return {
+            **state,
+            "admin_decision": "approved",
+            "awaiting_admin": False,
+            "reservation_data": {},
+            "response": response,
+        }
     except Exception as exc:
         logger.error("record_reservation_node failed: %s", exc)
         return {
             **state,
+            "admin_decision": "approved",
+            "awaiting_admin": False,
             "response": "Your reservation was approved, but we hit an internal error finalizing it.",
         }
 
@@ -518,13 +540,25 @@ def notify_rejection_node(state: ChatState, config: RunnableConfig) -> ChatState
             )
         else:
             logger.info("Reservation rejected for thread: %s", thread_id[:8])
-            response = "Your reservation request has been rejected."
+            response = (
+                "❌ We're sorry, your reservation request has been rejected "
+                "by the administrator. Please contact us for more information "
+                "or try making a new reservation."
+            )
 
-        return {**state, "reservation_data": {}, "response": response}
+        return {
+            **state,
+            "admin_decision": "rejected",
+            "awaiting_admin": False,
+            "reservation_data": {},
+            "response": response,
+        }
     except Exception as exc:
         logger.error("notify_rejection_node failed: %s", exc)
         return {
             **state,
+            "admin_decision": "rejected",
+            "awaiting_admin": False,
             "response": "We could not finalize the admin rejection result right now. Please try again later.",
         }
 
